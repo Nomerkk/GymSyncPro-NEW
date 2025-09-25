@@ -54,6 +54,8 @@ export interface IStorage {
   getUserPayments(userId: string): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: string, status: string): Promise<void>;
+  updatePaymentStatusByTransactionId(transactionId: string, status: string): Promise<void>;
+  getPaymentByOrderId(orderId: string): Promise<Payment | undefined>;
   
   // Admin operations
   getAllUsers(): Promise<User[]>;
@@ -246,6 +248,20 @@ export class DatabaseStorage implements IStorage {
 
   async updatePaymentStatus(id: string, status: string): Promise<void> {
     await db.update(payments).set({ status }).where(eq(payments.id, id));
+  }
+
+  async updatePaymentStatusByTransactionId(transactionId: string, status: string): Promise<void> {
+    await db.update(payments).set({ status }).where(eq(payments.stripePaymentIntentId, transactionId));
+  }
+
+  async getPaymentByOrderId(orderId: string): Promise<Payment | undefined> {
+    // For now, we'll use the description field to store order ID
+    // In production, you might want to add a separate orderId column
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.description, orderId));
+    return payment;
   }
 
   // Admin operations

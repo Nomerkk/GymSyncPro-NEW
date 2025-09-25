@@ -6,12 +6,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Make sure to call `loadStripe` outside of a component's render to avoid
-// recreating the `Stripe` object on every render.
-if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
-  throw new Error('Missing required Stripe key: VITE_STRIPE_PUBLIC_KEY');
-}
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+// Stripe integration is optional - redirect to payment modal instead
+const stripePromise = import.meta.env.VITE_STRIPE_PUBLIC_KEY ? 
+  loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY) : null;
 
 const CheckoutForm = () => {
   const stripe = useStripe();

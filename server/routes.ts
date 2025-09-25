@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import Stripe from "stripe";
+import * as midtransClient from 'midtrans-client';
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSchema, insertCheckInSchema, insertPaymentSchema } from "@shared/schema";
@@ -12,6 +13,26 @@ let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
   stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
     apiVersion: "2023-10-16",
+  });
+}
+
+// Indonesian Payment Gateway - Midtrans
+let midtransCore: any = null;
+let midtransSnap: any = null;
+
+if (process.env.MIDTRANS_SERVER_KEY) {
+  const isProduction = process.env.MIDTRANS_ENVIRONMENT === 'production';
+  
+  midtransCore = new midtransClient.CoreApi({
+    isProduction,
+    serverKey: process.env.MIDTRANS_SERVER_KEY,
+    clientKey: process.env.MIDTRANS_CLIENT_KEY || '',
+  });
+  
+  midtransSnap = new midtransClient.Snap({
+    isProduction,
+    serverKey: process.env.MIDTRANS_SERVER_KEY,
+    clientKey: process.env.MIDTRANS_CLIENT_KEY || '',
   });
 }
 
@@ -298,6 +319,351 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating class:", error);
       res.status(500).json({ message: "Failed to create class" });
+    }
+  });
+
+  // Indonesian Payment Gateway Routes
+  
+  // QRIS Payment
+  app.post('/api/payment/qris', isAuthenticated, async (req: any, res) => {
+    try {
+      if (!midtransCore) {
+        return res.status(501).json({ 
+          message: 'Payment gateway belum dikonfigurasi. Hubungi administrator.' 
+        });
+      }
+
+      // Validate input
+      const qrisPaymentSchema = z.object({
+        planId: z.string().min(1, 'Plan ID diperlukan'),
+      });
+
+      const validatedData = qrisPaymentSchema.parse(req.body);
+      const { planId } = validatedData;
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user?.email) {
+        return res.status(400).json({ message: 'Email user diperlukan' });
+      }
+
+      // Get membership plan
+      const plans = await storage.getMembershipPlans();
+      const plan = plans.find(p => p.id === planId);
+      if (!plan) {
+        return res.status(400).json({ message: 'Paket membership tidak valid' });
+      }
+
+      const orderId = `gym-${userId}-${Date.now()}`;
+      const parameter = {
+        payment_type: 'qris',
+        transaction_details: {
+          order_id: orderId,
+          gross_amount: parseInt(plan.price),
+        },
+        qris: {
+          acquirer: 'gopay'
+        },
+        customer_details: {
+          first_name: user.firstName || 'Member',
+          last_name: user.lastName || 'Gym',
+          email: user.email,
+        },
+        item_details: [{
+          id: plan.id,
+          price: parseInt(plan.price),
+          quantity: 1,
+          name: `Membership ${plan.name}`,
+          category: 'Gym Membership'
+        }]
+      };
+
+      const qrisTransaction = await midtransCore.charge(parameter);
+      
+      // Create payment record with proper reconciliation fields
+      const paymentRecord = await storage.createPayment({
+        userId,
+        amount: plan.price,
+        currency: 'IDR',
+        status: 'pending',
+        description: `${orderId} - Membership ${plan.name} - QRIS`,
+        stripePaymentIntentId: qrisTransaction.transaction_id, // Store Midtrans transaction ID
+      });
+
+      res.json({
+        orderId,
+        qrString: qrisTransaction.qr_string,
+        transactionId: qrisTransaction.transaction_id,
+        transactionStatus: qrisTransaction.transaction_status,
+        paymentId: paymentRecord.id,
+        message: 'Scan QR Code untuk melakukan pembayaran'
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: 'Data input tidak valid', 
+          errors: error.errors 
+        });
+      }
+      console.error("Error creating QRIS payment:", error);
+      res.status(500).json({ message: "Gagal membuat pembayaran QRIS" });
+    }
+  });
+
+  // Virtual Account Payment
+  app.post('/api/payment/va', isAuthenticated, async (req: any, res) => {
+    try {
+      if (!midtransCore) {
+        return res.status(501).json({ 
+          message: 'Payment gateway belum dikonfigurasi. Hubungi administrator.' 
+        });
+      }
+
+      // Validate input
+      const vaPaymentSchema = z.object({
+        planId: z.string().min(1, 'Plan ID diperlukan'),
+        bankCode: z.enum(['bca', 'bni', 'bri', 'mandiri', 'permata'], {
+          errorMap: () => ({ message: 'Bank tidak didukung' })
+        }),
+      });
+
+      const validatedData = vaPaymentSchema.parse(req.body);
+      const { planId, bankCode } = validatedData;
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user?.email) {
+        return res.status(400).json({ message: 'Email user diperlukan' });
+      }
+
+      // Get membership plan
+      const plans = await storage.getMembershipPlans();
+      const plan = plans.find(p => p.id === planId);
+      if (!plan) {
+        return res.status(400).json({ message: 'Paket membership tidak valid' });
+      }
+
+      const orderId = `gym-va-${userId}-${Date.now()}`;
+      
+      // Different parameter structure for different banks
+      let parameter: any = {
+        transaction_details: {
+          order_id: orderId,
+          gross_amount: parseInt(plan.price),
+        },
+        customer_details: {
+          first_name: user.firstName || 'Member',
+          last_name: user.lastName || 'Gym',
+          email: user.email,
+        },
+        item_details: [{
+          id: plan.id,
+          price: parseInt(plan.price),
+          quantity: 1,
+          name: `Membership ${plan.name}`,
+          category: 'Gym Membership'
+        }]
+      };
+
+      // Handle different bank requirements
+      if (bankCode === 'mandiri') {
+        parameter.payment_type = 'echannel';
+        parameter.echannel = {
+          bill_info1: `Membership ${plan.name}`,
+          bill_info2: `Gym FitZone`
+        };
+      } else {
+        parameter.payment_type = 'bank_transfer';
+        parameter.bank_transfer = {
+          bank: bankCode
+        };
+      }
+
+      const vaTransaction = await midtransCore.charge(parameter);
+      
+      // Extract VA number based on bank
+      let vaNumber: string = '';
+      let expiry: string = '';
+      
+      if (bankCode === 'mandiri') {
+        vaNumber = vaTransaction.bill_key || '';
+        expiry = vaTransaction.biller_code || '';
+      } else if (bankCode === 'permata') {
+        vaNumber = vaTransaction.permata_va_number || '';
+      } else {
+        vaNumber = vaTransaction.va_numbers?.[0]?.va_number || '';
+        if (vaTransaction.va_numbers?.[0]) {
+          expiry = vaTransaction.va_numbers[0].expiry_date || '';
+        }
+      }
+      
+      // Create payment record with proper reconciliation fields
+      const paymentRecord = await storage.createPayment({
+        userId,
+        amount: plan.price,
+        currency: 'IDR',
+        status: 'pending',
+        description: `${orderId} - Membership ${plan.name} - VA ${bankCode.toUpperCase()}`,
+        stripePaymentIntentId: vaTransaction.transaction_id, // Store Midtrans transaction ID
+      });
+
+      res.json({
+        orderId,
+        vaNumber,
+        bank: bankCode.toUpperCase(),
+        expiry,
+        transactionId: vaTransaction.transaction_id,
+        transactionStatus: vaTransaction.transaction_status,
+        paymentId: paymentRecord.id,
+        message: `Transfer ke Virtual Account ${bankCode.toUpperCase()}`,
+        instructions: `Transfer sejumlah Rp ${parseInt(plan.price).toLocaleString('id-ID')} ke nomor VA: ${vaNumber}`
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: 'Data input tidak valid', 
+          errors: error.errors 
+        });
+      }
+      console.error("Error creating VA payment:", error);
+      res.status(500).json({ message: "Gagal membuat Virtual Account" });
+    }
+  });
+
+  // Payment status check endpoint
+  app.get('/api/payment/status/:orderId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { orderId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      // Verify the order belongs to this user by checking the order format
+      const orderParts = orderId.split('-');
+      if (orderParts.length < 3 || !['gym', 'gym-va'].includes(orderParts[0]) || orderParts[1] !== userId) {
+        return res.status(403).json({ message: 'Unauthorized access to payment status' });
+      }
+
+      // Get payment by description (which contains the order ID)
+      const payment = await storage.getPaymentByOrderId(orderId);
+      
+      if (!payment) {
+        return res.status(404).json({ message: 'Payment not found' });
+      }
+
+      res.json({
+        orderId,
+        status: payment.status,
+        amount: payment.amount,
+        currency: payment.currency,
+        transactionId: payment.stripePaymentIntentId
+      });
+    } catch (error) {
+      console.error("Error checking payment status:", error);
+      res.status(500).json({ message: "Failed to check payment status" });
+    }
+  });
+
+  // Payment notification webhook (for Midtrans)
+  app.post('/api/payment/midtrans/notify', async (req, res) => {
+    try {
+      if (!midtransCore) {
+        return res.status(501).json({ message: 'Payment gateway not configured' });
+      }
+
+      const notificationJson = req.body;
+      
+      // Verify signature for security
+      const orderId = notificationJson.order_id;
+      const statusCode = notificationJson.status_code;
+      const grossAmount = notificationJson.gross_amount;
+      const serverKey = process.env.MIDTRANS_SERVER_KEY;
+      
+      if (!serverKey) {
+        console.error("Missing Midtrans server key for signature verification");
+        return res.status(500).json({ message: "Server configuration error" });
+      }
+
+      // Create signature hash
+      const crypto = require('crypto');
+      const signatureKey = orderId + statusCode + grossAmount + serverKey;
+      const signature = crypto.createHash('sha512').update(signatureKey).digest('hex');
+      
+      if (signature !== notificationJson.signature_key) {
+        console.error(`Invalid signature for order ${orderId}`);
+        return res.status(401).json({ message: "Invalid signature" });
+      }
+
+      const statusResponse = await midtransCore.transaction.notification(notificationJson);
+      
+      const transactionStatus = statusResponse.transaction_status;
+      const fraudStatus = statusResponse.fraud_status;
+      const transactionId = statusResponse.transaction_id;
+
+      console.log(`Transaction notification received. Order ID: ${orderId}. Transaction status: ${transactionStatus}. Fraud status: ${fraudStatus}`);
+
+      // Find payment record by order ID (extract user ID from order ID format: gym-${userId}-${timestamp})
+      const orderParts = orderId.split('-');
+      let userId: string | null = null;
+      
+      if (orderParts.length >= 3 && (orderParts[0] === 'gym' || orderParts[0] === 'gym-va')) {
+        userId = orderParts[1];
+      }
+
+      if (!userId) {
+        console.error(`Could not extract user ID from order ID: ${orderId}`);
+        return res.status(400).json({ message: "Invalid order ID format" });
+      }
+
+      // Update payment status based on transaction status
+      let paymentStatus = 'pending';
+      let shouldActivateMembership = false;
+
+      if (transactionStatus === 'capture') {
+        if (fraudStatus === 'challenge') {
+          paymentStatus = 'challenged';
+        } else if (fraudStatus === 'accept') {
+          paymentStatus = 'completed';
+          shouldActivateMembership = true;
+        }
+      } else if (transactionStatus === 'settlement') {
+        paymentStatus = 'completed';
+        shouldActivateMembership = true;
+      } else if (transactionStatus === 'cancel' || transactionStatus === 'deny' || transactionStatus === 'expire') {
+        paymentStatus = 'failed';
+      } else if (transactionStatus === 'pending') {
+        paymentStatus = 'pending';
+      }
+
+      // Update payment record with transaction details
+      await storage.updatePaymentStatus(transactionId, paymentStatus);
+
+      // If payment is successful, activate membership
+      if (shouldActivateMembership) {
+        try {
+          // Extract plan ID from the order or get from most recent pending payment for this user
+          const userPayments = await storage.getUserPayments(userId);
+          const pendingPayment = userPayments.find(p => p.status === 'pending' || p.status === 'completed');
+          
+          if (pendingPayment?.membershipId) {
+            // Update existing membership status to active
+            await storage.updateMembershipStatus(pendingPayment.membershipId, 'active');
+          } else {
+            // Create new membership based on payment
+            // This would need to be enhanced to extract plan info from payment description
+            console.log(`Payment successful for user ${userId}, but no membership plan found to activate`);
+          }
+          
+          console.log(`Membership activated for user ${userId} after successful payment`);
+        } catch (error) {
+          console.error(`Error activating membership for user ${userId}:`, error);
+        }
+      }
+
+      res.status(200).json({ message: 'OK' });
+    } catch (error) {
+      console.error("Error handling payment notification:", error);
+      res.status(500).json({ message: "Failed to handle notification" });
     }
   });
 
