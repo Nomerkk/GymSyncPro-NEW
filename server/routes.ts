@@ -12,7 +12,7 @@ import { randomUUID } from "crypto";
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
   stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: "2023-10-16",
+    apiVersion: "2024-12-18.acacia",
   });
 }
 
@@ -67,7 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate stats
       const now = new Date();
       const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthlyCheckIns = checkIns.filter(checkIn => checkIn.checkInTime >= thisMonth).length;
+      const monthlyCheckIns = checkIns.filter(checkIn => checkIn.checkInTime && checkIn.checkInTime >= thisMonth).length;
       
       const upcomingClasses = classBookings.filter(booking => 
         booking.status === 'booked' && booking.bookingDate > now
@@ -221,7 +221,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const invoice = subscription.latest_invoice as Stripe.Invoice;
-      const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent;
+      const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent | null;
+      
+      if (!paymentIntent) {
+        throw new Error('No payment intent found');
+      }
 
       res.json({
         subscriptionId: subscription.id,

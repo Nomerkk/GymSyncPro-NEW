@@ -270,7 +270,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUsersWithMemberships(): Promise<(User & { membership?: Membership & { plan: MembershipPlan } })[]> {
-    return await db
+    const result = await db
       .select({
         id: users.id,
         email: users.email,
@@ -282,21 +282,61 @@ export class DatabaseStorage implements IStorage {
         stripeSubscriptionId: users.stripeSubscriptionId,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
-        membership: {
-          id: memberships.id,
-          userId: memberships.userId,
-          planId: memberships.planId,
-          startDate: memberships.startDate,
-          endDate: memberships.endDate,
-          status: memberships.status,
-          autoRenewal: memberships.autoRenewal,
-          createdAt: memberships.createdAt,
-          plan: membershipPlans,
-        },
+        membershipId: memberships.id,
+        membershipUserId: memberships.userId,
+        membershipPlanId: memberships.planId,
+        membershipStartDate: memberships.startDate,
+        membershipEndDate: memberships.endDate,
+        membershipStatus: memberships.status,
+        membershipAutoRenewal: memberships.autoRenewal,
+        membershipCreatedAt: memberships.createdAt,
+        planId: membershipPlans.id,
+        planName: membershipPlans.name,
+        planDescription: membershipPlans.description,
+        planPrice: membershipPlans.price,
+        planDurationMonths: membershipPlans.durationMonths,
+        planFeatures: membershipPlans.features,
+        planStripePriceId: membershipPlans.stripePriceId,
+        planActive: membershipPlans.active,
+        planCreatedAt: membershipPlans.createdAt,
       })
       .from(users)
       .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, "active")))
       .leftJoin(membershipPlans, eq(memberships.planId, membershipPlans.id));
+
+    return result.map(row => ({
+      id: row.id,
+      email: row.email,
+      firstName: row.firstName,
+      lastName: row.lastName,
+      profileImageUrl: row.profileImageUrl,
+      role: row.role,
+      stripeCustomerId: row.stripeCustomerId,
+      stripeSubscriptionId: row.stripeSubscriptionId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      membership: row.membershipId ? {
+        id: row.membershipId,
+        userId: row.membershipUserId!,
+        planId: row.membershipPlanId!,
+        startDate: row.membershipStartDate!,
+        endDate: row.membershipEndDate!,
+        status: row.membershipStatus!,
+        autoRenewal: row.membershipAutoRenewal!,
+        createdAt: row.membershipCreatedAt!,
+        plan: {
+          id: row.planId!,
+          name: row.planName!,
+          description: row.planDescription,
+          price: row.planPrice!,
+          durationMonths: row.planDurationMonths!,
+          features: row.planFeatures,
+          stripePriceId: row.planStripePriceId,
+          active: row.planActive!,
+          createdAt: row.planCreatedAt!,
+        }
+      } : undefined
+    }));
   }
 
   async getRevenueStats(): Promise<{ total: number; thisMonth: number; lastMonth: number }> {
