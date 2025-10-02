@@ -171,25 +171,27 @@ export default function MemberDashboard() {
     <div className="min-h-screen bg-muted/30">
       <Navigation user={user} notificationCount={isExpiringSoon ? 1 : 0} />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Welcome Section */}
-        <div className="mb-8 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-          <div>
-            <h2 className="text-3xl font-bold text-foreground">
-              Welcome back, {user.firstName || "Member"}!
-            </h2>
-            <p className="text-muted-foreground mt-1">Here's your fitness journey overview</p>
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
+                Welcome back, {user.firstName || "Member"}!
+              </h2>
+              <p className="text-sm sm:text-base text-muted-foreground mt-1">Here's your fitness journey overview</p>
+            </div>
+            <Button
+              onClick={() => generateQRMutation.mutate()}
+              disabled={generateQRMutation.isPending}
+              className="success-gradient text-white w-full sm:w-auto shadow-lg"
+              size="lg"
+              data-testid="button-generate-qr"
+            >
+              <QrCode size={20} className="mr-2" />
+              {generateQRMutation.isPending ? "Generating..." : "Generate Check-in QR"}
+            </Button>
           </div>
-          <Button
-            onClick={() => generateQRMutation.mutate()}
-            disabled={generateQRMutation.isPending}
-            className="success-gradient text-white w-full sm:w-auto"
-            size="lg"
-            data-testid="button-generate-qr"
-          >
-            <QrCode size={20} className="mr-2" />
-            {generateQRMutation.isPending ? "Generating..." : "Generate Check-in QR"}
-          </Button>
         </div>
 
         {/* Expiring Membership Warning */}
@@ -218,78 +220,78 @@ export default function MemberDashboard() {
         )}
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">This Month</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-monthly-checkins">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">This Month</p>
+                  <p className="text-xl sm:text-2xl font-bold text-foreground mt-1" data-testid="text-monthly-checkins">
                     {stats.monthlyCheckIns || 0}
                   </p>
-                  <p className="text-xs text-muted-foreground">Check-ins</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Check-ins</p>
                 </div>
-                <div className="success-gradient w-12 h-12 rounded-lg flex items-center justify-center">
-                  <CalendarCheck className="text-white" size={20} />
+                <div className="success-gradient w-9 h-9 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <CalendarCheck className="text-white" size={16} />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Membership</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-days-remaining">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">Membership</p>
+                  <p className="text-xl sm:text-2xl font-bold text-foreground mt-1" data-testid="text-days-remaining">
                     {getDaysUntilExpiry()}
                   </p>
-                  <p className="text-xs text-muted-foreground">Days left</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Days left</p>
                 </div>
-                <div className="gym-gradient w-12 h-12 rounded-lg flex items-center justify-center">
-                  <IdCard className="text-white" size={20} />
+                <div className="gym-gradient w-9 h-9 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <IdCard className="text-white" size={16} />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Classes Booked</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-upcoming-classes">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">Classes Booked</p>
+                  <p className="text-xl sm:text-2xl font-bold text-foreground mt-1" data-testid="text-upcoming-classes">
                     {stats.upcomingClasses || 0}
                   </p>
-                  <p className="text-xs text-muted-foreground">This week</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">This week</p>
                 </div>
-                <div className="warning-gradient w-12 h-12 rounded-lg flex items-center justify-center">
-                  <Users className="text-white" size={20} />
+                <div className="warning-gradient w-9 h-9 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                  <Users className="text-white" size={16} />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
+          <Card className="shadow-sm hover:shadow-md transition-shadow sm:col-span-2 lg:col-span-1">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Gym Crowd</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-crowd-count">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">Gym Crowd</p>
+                  <p className="text-xl sm:text-2xl font-bold text-foreground mt-1" data-testid="text-crowd-count">
                     {crowdCount}
                   </p>
-                  <p className="text-xs text-muted-foreground">People now</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">People now</p>
                 </div>
-                <div className={`${crowdInfo.color} w-12 h-12 rounded-lg flex items-center justify-center`}>
-                  <Users className="text-white" size={20} />
+                <div className={`${crowdInfo.color} w-9 h-9 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ml-2`}>
+                  <Users className="text-white" size={16} />
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-border">
-                <div className="flex items-center space-x-2">
-                  <Badge variant={crowdInfo.level === "Low" ? "default" : crowdInfo.level === "Medium" ? "secondary" : "destructive"}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={crowdInfo.level === "Low" ? "default" : crowdInfo.level === "Medium" ? "secondary" : "destructive"} className="text-xs">
                     {crowdInfo.level}
                   </Badge>
-                  <p className="text-xs text-muted-foreground">{crowdInfo.text}</p>
+                  <p className="text-xs text-muted-foreground leading-tight">{crowdInfo.text}</p>
                 </div>
               </div>
             </CardContent>
@@ -297,80 +299,115 @@ export default function MemberDashboard() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
           {/* Left Column */}
-          <div className="lg:col-span-2 space-y-8">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6 lg:space-y-8">
             {/* Check-in History */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Check-ins</CardTitle>
-                <p className="text-sm text-muted-foreground">Your gym visit history</p>
+            <Card className="shadow-sm">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-lg sm:text-xl">Recent Check-ins</CardTitle>
+                <p className="text-xs sm:text-sm text-muted-foreground">Your gym visit history</p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-0 sm:p-6 sm:pt-0">
                 {checkIns.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">No check-ins yet</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-muted/50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            Date & Time
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            Duration
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            Status
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {checkIns.map((checkIn: any) => (
-                          <tr key={checkIn.id} data-testid={`row-checkin-${checkIn.id}`}>
-                            <td className="px-6 py-4">
-                              <div>
-                                <p className="text-sm font-medium text-foreground">
-                                  {new Date(checkIn.checkInTime).toLocaleString()}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {new Date(checkIn.checkInTime).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-foreground">
-                              {formatDuration(checkIn)}
-                            </td>
-                            <td className="px-6 py-4">
-                              <Badge variant={checkIn.status === "completed" ? "default" : "secondary"}>
-                                {checkIn.status === "completed" ? "Complete" : "Active"}
-                              </Badge>
-                            </td>
+                  <>
+                    {/* Mobile View */}
+                    <div className="sm:hidden space-y-3 px-4 pb-4">
+                      {checkIns.map((checkIn: any) => (
+                        <div key={checkIn.id} className="border border-border rounded-lg p-3" data-testid={`row-checkin-${checkIn.id}`}>
+                          <div className="flex justify-between items-start gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground break-words">
+                                {new Date(checkIn.checkInTime).toLocaleDateString('id-ID', { 
+                                  day: 'numeric', 
+                                  month: 'short', 
+                                  year: 'numeric' 
+                                })}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {new Date(checkIn.checkInTime).toLocaleTimeString('id-ID', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}
+                              </p>
+                            </div>
+                            <Badge variant={checkIn.status === "completed" ? "default" : "secondary"} className="text-xs flex-shrink-0">
+                              {checkIn.status === "completed" ? "Complete" : "Active"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground">
+                            <Clock size={12} className="mr-1.5 flex-shrink-0" />
+                            <span>{formatDuration(checkIn)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* Desktop View */}
+                    <div className="hidden sm:block overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Date & Time
+                            </th>
+                            <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Duration
+                            </th>
+                            <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Status
+                            </th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {checkIns.map((checkIn: any) => (
+                            <tr key={checkIn.id} data-testid={`row-checkin-${checkIn.id}`}>
+                              <td className="px-4 lg:px-6 py-4">
+                                <div>
+                                  <p className="text-sm font-medium text-foreground">
+                                    {new Date(checkIn.checkInTime).toLocaleString('id-ID')}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(checkIn.checkInTime).toLocaleDateString('id-ID')}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-4 lg:px-6 py-4 text-sm text-foreground">
+                                {formatDuration(checkIn)}
+                              </td>
+                              <td className="px-4 lg:px-6 py-4">
+                                <Badge variant={checkIn.status === "completed" ? "default" : "secondary"}>
+                                  {checkIn.status === "completed" ? "Complete" : "Active"}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
 
             {/* Gym Classes */}
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
+            <Card className="shadow-sm">
+              <CardHeader className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                   <div>
-                    <CardTitle>Available Classes</CardTitle>
-                    <p className="text-sm text-muted-foreground">Book your fitness classes</p>
+                    <CardTitle className="text-lg sm:text-xl">Available Classes</CardTitle>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Book your fitness classes</p>
                   </div>
-                  <Button className="gym-gradient text-white">View All Classes</Button>
+                  <Button className="gym-gradient text-white w-full sm:w-auto text-sm" size="sm">View All Classes</Button>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 sm:p-6 sm:pt-0">
                 {!classes || classes.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">No classes available</p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:gap-4">
                     {classes.slice(0, 4).map((gymClass: any) => (
                       <Card key={gymClass.id} className="border">
                         <CardContent className="p-4">

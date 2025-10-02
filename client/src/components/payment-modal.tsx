@@ -215,20 +215,20 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" data-testid="modal-payment">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle>
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] flex flex-col p-0" data-testid="modal-payment">
+        <DialogHeader className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b">
+          <DialogTitle className="text-lg sm:text-xl">
             {step === 1 ? "Pilih Paket & Metode Pembayaran" : "Informasi Pembayaran"}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="overflow-y-auto flex-1 px-6 pb-6">
+        <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 sm:py-6">
           <div className="space-y-6">
           {step === 1 ? (
             <>
               {/* Plan Selection */}
               <div>
-                <Label className="text-sm font-medium text-foreground mb-3 block">Pilih Paket Membership</Label>
+                <Label className="text-xs sm:text-sm font-medium text-foreground mb-2 sm:mb-3 block">Pilih Paket Membership</Label>
                 <RadioGroup value={selectedPlan} onValueChange={setSelectedPlan}>
                   <div className="space-y-3">
                     {plans.map((plan: any) => (
@@ -257,7 +257,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
 
               {/* Payment Method Selection */}
               <div>
-                <Label className="text-sm font-medium text-foreground mb-3 block">Metode Pembayaran</Label>
+                <Label className="text-xs sm:text-sm font-medium text-foreground mb-2 sm:mb-3 block">Metode Pembayaran</Label>
                 <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
                   <div className="space-y-3">
                     <div>
@@ -300,7 +300,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
               {/* Bank Selection for VA */}
               {paymentMethod === "va" && (
                 <div>
-                  <Label className="text-sm font-medium text-foreground mb-3 block">Pilih Bank</Label>
+                  <Label className="text-xs sm:text-sm font-medium text-foreground mb-2 sm:mb-3 block">Pilih Bank</Label>
                   <Select value={selectedBank} onValueChange={setSelectedBank}>
                     <SelectTrigger data-testid="select-bank">
                       <SelectValue placeholder="Pilih bank" />
@@ -332,18 +332,18 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
                 <Button
                   onClick={handleProceedToPayment}
                   disabled={!selectedPlan || qrisPaymentMutation.isPending || vaPaymentMutation.isPending}
-                  className="flex-1 success-gradient text-white"
+                  className="flex-1 success-gradient text-white text-sm sm:text-base h-10 sm:h-11"
                   data-testid="button-proceed-payment"
                 >
                   {qrisPaymentMutation.isPending || vaPaymentMutation.isPending ? (
                     "Memproses..."
                   ) : (
                     <>
-                      {paymentMethod === "qris" ? <QrCode size={16} className="mr-2" /> : <Building size={16} className="mr-2" />}
+                      {paymentMethod === "qris" ? <QrCode size={14} className="mr-2" /> : <Building size={14} className="mr-2" />}
                       Lanjutkan Pembayaran
                     </>
                   )}
@@ -352,7 +352,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                 <Button
                   variant="outline"
                   onClick={handleClose}
-                  className="flex-1"
+                  className="flex-1 text-sm sm:text-base h-10 sm:h-11"
                   data-testid="button-cancel-payment"
                 >
                   Batal
