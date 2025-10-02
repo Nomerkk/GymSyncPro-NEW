@@ -547,8 +547,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       
       // Verify the order belongs to this user by checking the order format
+      // Format: gym-${userId}-${timestamp} or gym-va-${userId}-${timestamp}
       const orderParts = orderId.split('-');
-      if (orderParts.length < 3 || !['gym', 'gym-va'].includes(orderParts[0]) || orderParts[1] !== userId) {
+      const isGymFormat = orderParts[0] === 'gym' && orderParts[1] !== 'va';
+      const isGymVaFormat = orderParts[0] === 'gym' && orderParts[1] === 'va';
+      
+      let orderUserId = '';
+      if (isGymFormat && orderParts.length >= 3) {
+        orderUserId = orderParts[1];
+      } else if (isGymVaFormat && orderParts.length >= 4) {
+        orderUserId = orderParts[2];
+      }
+      
+      if (!orderUserId || orderUserId !== userId) {
         return res.status(403).json({ message: 'Unauthorized access to payment status' });
       }
 
@@ -610,12 +621,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Transaction notification received. Order ID: ${orderId}. Transaction status: ${transactionStatus}. Fraud status: ${fraudStatus}`);
 
-      // Find payment record by order ID (extract user ID from order ID format: gym-${userId}-${timestamp})
+      // Find payment record by order ID (extract user ID from order ID format)
+      // Format: gym-${userId}-${timestamp} or gym-va-${userId}-${timestamp}
       const orderParts = orderId.split('-');
       let userId: string | null = null;
       
-      if (orderParts.length >= 3 && (orderParts[0] === 'gym' || orderParts[0] === 'gym-va')) {
+      const isGymFormat = orderParts[0] === 'gym' && orderParts[1] !== 'va';
+      const isGymVaFormat = orderParts[0] === 'gym' && orderParts[1] === 'va';
+      
+      if (isGymFormat && orderParts.length >= 3) {
         userId = orderParts[1];
+      } else if (isGymVaFormat && orderParts.length >= 4) {
+        userId = orderParts[2];
       }
 
       if (!userId) {
