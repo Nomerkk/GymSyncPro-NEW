@@ -57,11 +57,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       
-      const [membership, checkIns, classBookings, payments] = await Promise.all([
+      const [membership, checkIns, classBookings, payments, crowdCount] = await Promise.all([
         storage.getUserMembership(userId),
         storage.getUserCheckIns(userId, 10),
         storage.getUserClassBookings(userId),
         storage.getUserPayments(userId),
+        storage.getCurrentCrowdCount(),
       ]);
 
       // Calculate stats
@@ -81,6 +82,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stats: {
           monthlyCheckIns,
           upcomingClasses: upcomingClasses.length,
+          currentCrowd: crowdCount,
         }
       });
     } catch (error) {
