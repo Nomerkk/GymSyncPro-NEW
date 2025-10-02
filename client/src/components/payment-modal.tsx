@@ -13,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { QrCode, CreditCard, Building, X, Copy, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { QrCode, CreditCard, Building, Copy, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import * as QRCode from 'qrcode';
 
 interface PaymentModalProps {
@@ -215,16 +215,11 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] p-0 overflow-hidden" data-testid="modal-payment">
-        <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
-          <div className="flex justify-between items-center">
-            <DialogTitle>
-              {step === 1 ? "Pilih Paket & Metode Pembayaran" : "Informasi Pembayaran"}
-            </DialogTitle>
-            <Button variant="ghost" size="sm" onClick={handleClose} data-testid="button-close-payment-modal">
-              <X size={16} />
-            </Button>
-          </div>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" data-testid="modal-payment">
+        <DialogHeader className="flex-shrink-0">
+          <DialogTitle>
+            {step === 1 ? "Pilih Paket & Metode Pembayaran" : "Informasi Pembayaran"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="overflow-y-auto flex-1 px-6 pb-6">
