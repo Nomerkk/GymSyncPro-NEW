@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import Login from "@/pages/login";
+import LoginAdmin from "@/pages/login-admin";
 import Register from "@/pages/register";
 import RegisterAdmin from "@/pages/register-admin";
 import MemberDashboard from "@/pages/member-dashboard";
@@ -28,6 +29,7 @@ function Router() {
       {!isAuthenticated ? (
         <>
           <Route path="/login" component={Login} />
+          <Route path="/login-admin" component={LoginAdmin} />
           <Route path="/register" component={Register} />
           <Route path="/register-admin" component={RegisterAdmin} />
           <Route path="/">
