@@ -510,6 +510,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Feedback routes
+  app.post('/api/feedbacks', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { subject, message, rating } = req.body;
+
+      if (!subject || !message) {
+        return res.status(400).json({ message: 'Subject and message are required' });
+      }
+
+      const feedback = await storage.createFeedback({
+        userId,
+        subject,
+        message,
+        rating: rating || null,
+        status: 'pending',
+      });
+
+      res.json(feedback);
+    } catch (error) {
+      console.error("Error creating feedback:", error);
+      res.status(500).json({ message: "Failed to create feedback" });
+    }
+  });
+
+  app.get('/api/feedbacks', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const feedbacks = await storage.getUserFeedbacks(userId);
+      res.json(feedbacks);
+    } catch (error) {
+      console.error("Error fetching feedbacks:", error);
+      res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+  });
+
+  app.get('/api/admin/feedbacks', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const feedbacks = await storage.getAllFeedbacks();
+      res.json(feedbacks);
+    } catch (error) {
+      console.error("Error fetching all feedbacks:", error);
+      res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+  });
+
+  app.put('/api/admin/feedbacks/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      const { status, adminResponse } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ message: 'Status is required' });
+      }
+
+      await storage.updateFeedbackStatus(id, status, adminResponse);
+      res.json({ message: 'Feedback updated successfully' });
+    } catch (error) {
+      console.error("Error updating feedback:", error);
+      res.status(500).json({ message: "Failed to update feedback" });
+    }
+  });
+
   // Indonesian Payment Gateway Routes
   
   // QRIS Payment
