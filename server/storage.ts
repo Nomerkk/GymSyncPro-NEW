@@ -50,6 +50,8 @@ export interface IStorage {
   createCheckIn(checkIn: InsertCheckIn): Promise<CheckIn>;
   updateCheckOut(id: string): Promise<void>;
   getCurrentCrowdCount(): Promise<number>;
+  validateCheckInQR(qrCode: string): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } }) | undefined>;
+  getRecentCheckIns(limit?: number): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } })[]>;
   
   // Payment operations
   getUserPayments(userId: string): Promise<Payment[]>;
@@ -245,6 +247,147 @@ export class DatabaseStorage implements IStorage {
       .where(eq(checkIns.status, "active"));
     
     return result[0]?.count || 0;
+  }
+
+  async validateCheckInQR(qrCode: string): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } }) | undefined> {
+    const result = await db
+      .select({
+        id: checkIns.id,
+        userId: checkIns.userId,
+        checkInTime: checkIns.checkInTime,
+        checkOutTime: checkIns.checkOutTime,
+        qrCode: checkIns.qrCode,
+        status: checkIns.status,
+        createdAt: checkIns.createdAt,
+        user: users,
+        membershipId: memberships.id,
+        membershipUserId: memberships.userId,
+        membershipPlanId: memberships.planId,
+        membershipStartDate: memberships.startDate,
+        membershipEndDate: memberships.endDate,
+        membershipStatus: memberships.status,
+        membershipAutoRenewal: memberships.autoRenewal,
+        membershipCreatedAt: memberships.createdAt,
+        planId: membershipPlans.id,
+        planName: membershipPlans.name,
+        planDescription: membershipPlans.description,
+        planPrice: membershipPlans.price,
+        planDurationMonths: membershipPlans.durationMonths,
+        planFeatures: membershipPlans.features,
+        planStripePriceId: membershipPlans.stripePriceId,
+        planActive: membershipPlans.active,
+        planCreatedAt: membershipPlans.createdAt,
+      })
+      .from(checkIns)
+      .innerJoin(users, eq(checkIns.userId, users.id))
+      .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, "active")))
+      .leftJoin(membershipPlans, eq(memberships.planId, membershipPlans.id))
+      .where(and(eq(checkIns.qrCode, qrCode), eq(checkIns.status, "active")))
+      .limit(1);
+
+    if (result.length === 0) return undefined;
+
+    const row = result[0];
+    return {
+      id: row.id,
+      userId: row.userId,
+      checkInTime: row.checkInTime,
+      checkOutTime: row.checkOutTime,
+      qrCode: row.qrCode,
+      status: row.status,
+      createdAt: row.createdAt,
+      user: row.user,
+      membership: row.membershipId ? {
+        id: row.membershipId,
+        userId: row.membershipUserId!,
+        planId: row.membershipPlanId!,
+        startDate: row.membershipStartDate!,
+        endDate: row.membershipEndDate!,
+        status: row.membershipStatus!,
+        autoRenewal: row.membershipAutoRenewal!,
+        createdAt: row.membershipCreatedAt!,
+        plan: {
+          id: row.planId!,
+          name: row.planName!,
+          description: row.planDescription,
+          price: row.planPrice!,
+          durationMonths: row.planDurationMonths!,
+          features: row.planFeatures,
+          stripePriceId: row.planStripePriceId,
+          active: row.planActive!,
+          createdAt: row.planCreatedAt!,
+        }
+      } : undefined
+    };
+  }
+
+  async getRecentCheckIns(limit = 20): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } })[]> {
+    const result = await db
+      .select({
+        id: checkIns.id,
+        userId: checkIns.userId,
+        checkInTime: checkIns.checkInTime,
+        checkOutTime: checkIns.checkOutTime,
+        qrCode: checkIns.qrCode,
+        status: checkIns.status,
+        createdAt: checkIns.createdAt,
+        user: users,
+        membershipId: memberships.id,
+        membershipUserId: memberships.userId,
+        membershipPlanId: memberships.planId,
+        membershipStartDate: memberships.startDate,
+        membershipEndDate: memberships.endDate,
+        membershipStatus: memberships.status,
+        membershipAutoRenewal: memberships.autoRenewal,
+        membershipCreatedAt: memberships.createdAt,
+        planId: membershipPlans.id,
+        planName: membershipPlans.name,
+        planDescription: membershipPlans.description,
+        planPrice: membershipPlans.price,
+        planDurationMonths: membershipPlans.durationMonths,
+        planFeatures: membershipPlans.features,
+        planStripePriceId: membershipPlans.stripePriceId,
+        planActive: membershipPlans.active,
+        planCreatedAt: membershipPlans.createdAt,
+      })
+      .from(checkIns)
+      .innerJoin(users, eq(checkIns.userId, users.id))
+      .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, "active")))
+      .leftJoin(membershipPlans, eq(memberships.planId, membershipPlans.id))
+      .orderBy(desc(checkIns.checkInTime))
+      .limit(limit);
+
+    return result.map(row => ({
+      id: row.id,
+      userId: row.userId,
+      checkInTime: row.checkInTime,
+      checkOutTime: row.checkOutTime,
+      qrCode: row.qrCode,
+      status: row.status,
+      createdAt: row.createdAt,
+      user: row.user,
+      membership: row.membershipId ? {
+        id: row.membershipId,
+        userId: row.membershipUserId!,
+        planId: row.membershipPlanId!,
+        startDate: row.membershipStartDate!,
+        endDate: row.membershipEndDate!,
+        status: row.membershipStatus!,
+        autoRenewal: row.membershipAutoRenewal!,
+        createdAt: row.membershipCreatedAt!,
+        plan: {
+          id: row.planId!,
+          name: row.planName!,
+          description: row.planDescription,
+          price: row.planPrice!,
+          durationMonths: row.planDurationMonths!,
+          features: row.planFeatures,
+          stripePriceId: row.planStripePriceId,
+          active: row.planActive!,
+          createdAt: row.planCreatedAt!,
+        }
+      } : undefined
+    }));
   }
 
   // Payment operations
