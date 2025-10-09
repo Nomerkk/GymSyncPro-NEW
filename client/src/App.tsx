@@ -1,10 +1,11 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
-import Landing from "@/pages/landing";
+import Login from "@/pages/login";
+import Register from "@/pages/register";
 import MemberDashboard from "@/pages/member-dashboard";
 import AdminDashboard from "@/pages/admin-dashboard";
 import Checkout from "@/pages/checkout";
@@ -24,7 +25,13 @@ function Router() {
   return (
     <Switch>
       {!isAuthenticated ? (
-        <Route path="/" component={Landing} />
+        <>
+          <Route path="/login" component={Login} />
+          <Route path="/register" component={Register} />
+          <Route path="/">
+            <Redirect to="/login" />
+          </Route>
+        </>
       ) : (
         <>
           <Route path="/" component={user?.role === 'admin' ? AdminDashboard : MemberDashboard} />
