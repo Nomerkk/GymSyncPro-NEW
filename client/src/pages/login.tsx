@@ -10,7 +10,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import { Dumbbell } from "lucide-react";
+import idachiLogo from "@assets/image_1759411904981.png";
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
@@ -52,16 +52,24 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-blue-600 p-3 rounded-full">
-              <Dumbbell className="h-8 w-8 text-white" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 dark:from-black dark:via-purple-950 dark:to-black p-4">
+      <Card className="w-full max-w-md shadow-2xl border-purple-500/20 dark:border-purple-400/20">
+        <CardHeader className="space-y-3 text-center pb-8">
+          <div className="flex justify-center mb-2">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur-xl opacity-50"></div>
+              <img 
+                src={idachiLogo} 
+                alt="Idachi Logo" 
+                className="relative h-24 w-24 object-contain rounded-2xl"
+                data-testid="img-logo"
+              />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Login Idachi Connect</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            Idachi Fitness
+          </CardTitle>
+          <CardDescription className="text-gray-300 dark:text-gray-400">
             Masukkan username dan password Anda
           </CardDescription>
         </CardHeader>
