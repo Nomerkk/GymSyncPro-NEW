@@ -9,6 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Navigation from "@/components/ui/navigation";
+import AdminCheckInModal from "@/components/admin-checkin-modal";
+import { queryClient } from "@/lib/queryClient";
+import { format } from "date-fns";
 import {
   Users,
   CalendarCheck,
@@ -19,6 +22,9 @@ import {
   Trash2,
   UserPlus,
   TrendingUp,
+  QrCode,
+  Clock,
+  LogIn,
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -26,6 +32,7 @@ export default function AdminDashboard() {
   const { user, isLoading, isAuthenticated } = useAuth();
   const [memberFilter, setMemberFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -52,6 +59,13 @@ export default function AdminDashboard() {
     queryKey: ["/api/admin/members"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
+  });
+
+  const { data: recentCheckIns } = useQuery({
+    queryKey: ["/api/admin/checkins"],
+    enabled: isAuthenticated && user?.role === 'admin',
+    retry: false,
+    refetchInterval: 10000,
   });
 
   if (isLoading || dashboardLoading) {
@@ -117,9 +131,19 @@ export default function AdminDashboard() {
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Admin Header */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-foreground">Admin Dashboard</h2>
-          <p className="text-muted-foreground mt-1">Manage gym operations and member accounts</p>
+        <div className="mb-8 flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold text-foreground">Admin Dashboard</h2>
+            <p className="text-muted-foreground mt-1">Manage gym operations and member accounts</p>
+          </div>
+          <Button 
+            onClick={() => setShowCheckInModal(true)}
+            className="gym-gradient text-white"
+            data-testid="button-validate-checkin"
+          >
+            <QrCode className="mr-2" size={16} />
+            Validasi Check-in
+          </Button>
         </div>
 
         {/* Admin Stats */}
@@ -402,52 +426,70 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            {/* Recent Activity */}
+            {/* Recent Check-ins */}
             <Card>
               <CardHeader>
-                <CardTitle>Recent Activity</CardTitle>
-                <p className="text-sm text-muted-foreground">System events</p>
+                <CardTitle>Recent Check-ins</CardTitle>
+                <p className="text-sm text-muted-foreground">Live member activity</p>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-3">
-                    <div className="success-gradient w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
-                      <UserPlus className="text-white" size={12} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-foreground">New member registered</p>
-                      <p className="text-xs text-muted-foreground">Emma Davis joined Premium plan</p>
-                      <p className="text-xs text-muted-foreground">2 hours ago</p>
-                    </div>
+                {!recentCheckIns || recentCheckIns.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <LogIn className="mx-auto mb-2" size={32} />
+                    <p>No recent check-ins</p>
                   </div>
-
-                  <div className="flex items-start space-x-3">
-                    <div className="warning-gradient w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
-                      <DollarSign className="text-white" size={12} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-foreground">Payment processed</p>
-                      <p className="text-xs text-muted-foreground">John Doe renewed membership</p>
-                      <p className="text-xs text-muted-foreground">5 hours ago</p>
-                    </div>
+                ) : (
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                    {recentCheckIns.slice(0, 10).map((checkIn: any) => (
+                      <div 
+                        key={checkIn.id} 
+                        className="flex items-start space-x-3 pb-3 border-b border-border last:border-0"
+                        data-testid={`checkin-item-${checkIn.id}`}
+                      >
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={checkIn.user?.profileImageUrl} />
+                          <AvatarFallback className="text-xs">
+                            {`${checkIn.user?.firstName?.[0] || ''}${checkIn.user?.lastName?.[0] || ''}`}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {checkIn.user?.firstName} {checkIn.user?.lastName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {checkIn.membership?.plan?.name || 'No membership'}
+                          </p>
+                          <div className="flex items-center gap-1 mt-1">
+                            <Clock size={10} className="text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground">
+                              {format(new Date(checkIn.checkInTime), "HH:mm")}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge 
+                          variant={checkIn.status === 'active' ? 'default' : 'secondary'}
+                          className="text-xs"
+                        >
+                          {checkIn.status === 'active' ? 'In' : 'Out'}
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
-
-                  <div className="flex items-start space-x-3">
-                    <div className="bg-gradient-to-r from-red-500 to-red-600 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
-                      <TriangleAlert className="text-white" size={12} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-foreground">Membership expiring</p>
-                      <p className="text-xs text-muted-foreground">Sarah Wilson - 3 days left</p>
-                      <p className="text-xs text-muted-foreground">1 day ago</p>
-                    </div>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+
+      {/* Check-in Modal */}
+      <AdminCheckInModal 
+        open={showCheckInModal} 
+        onClose={() => setShowCheckInModal(false)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/admin/checkins"] });
+        }}
+      />
     </div>
   );
 }
