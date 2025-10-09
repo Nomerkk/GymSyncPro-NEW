@@ -29,9 +29,12 @@ export const sessions = pgTable(
 // User storage table.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
+  username: varchar("username").unique().notNull(),
+  password: varchar("password").notNull(),
+  email: varchar("email").unique().notNull(),
+  firstName: varchar("first_name").notNull(),
+  lastName: varchar("last_name").notNull(),
+  phone: varchar("phone"),
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role").default("member"), // member, admin
   stripeCustomerId: varchar("stripe_customer_id"),
@@ -176,6 +179,26 @@ export const insertUserSchema = createInsertSchema(users).omit({
   updatedAt: true,
 });
 
+// Register schema with validation
+export const registerSchema = insertUserSchema.extend({
+  password: z.string().min(6, "Password minimal 6 karakter"),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Password tidak cocok",
+  path: ["confirmPassword"],
+}).omit({
+  role: true,
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+  profileImageUrl: true,
+});
+
+// Login schema
+export const loginSchema = z.object({
+  username: z.string().min(1, "Username diperlukan"),
+  password: z.string().min(1, "Password diperlukan"),
+});
+
 export const insertMembershipPlanSchema = createInsertSchema(membershipPlans).omit({
   id: true,
   createdAt: true,
@@ -209,6 +232,8 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 // Types
 export type UpsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type RegisterInput = z.infer<typeof registerSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
 export type MembershipPlan = typeof membershipPlans.$inferSelect;
 export type InsertMembershipPlan = z.infer<typeof insertMembershipPlanSchema>;
 export type Membership = typeof memberships.$inferSelect;
