@@ -608,6 +608,234 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Personal Trainer routes
+  app.get('/api/trainers', isAuthenticated, async (req, res) => {
+    try {
+      const trainers = await storage.getActiveTrainers();
+      res.json(trainers);
+    } catch (error) {
+      console.error("Error fetching trainers:", error);
+      res.status(500).json({ message: "Failed to fetch trainers" });
+    }
+  });
+
+  app.get('/api/trainers/:id', isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const trainer = await storage.getTrainerById(id);
+      
+      if (!trainer) {
+        return res.status(404).json({ message: 'Trainer not found' });
+      }
+      
+      res.json(trainer);
+    } catch (error) {
+      console.error("Error fetching trainer:", error);
+      res.status(500).json({ message: "Failed to fetch trainer" });
+    }
+  });
+
+  // Admin PT management routes
+  app.get('/api/admin/trainers', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const trainers = await storage.getAllTrainers();
+      res.json(trainers);
+    } catch (error) {
+      console.error("Error fetching trainers:", error);
+      res.status(500).json({ message: "Failed to fetch trainers" });
+    }
+  });
+
+  app.post('/api/admin/trainers', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const trainerSchema = z.object({
+        name: z.string().min(1, "Name is required"),
+        bio: z.string().optional(),
+        specialization: z.string().min(1, "Specialization is required"),
+        experience: z.number().optional(),
+        certification: z.string().optional(),
+        imageUrl: z.string().optional(),
+        pricePerSession: z.string().or(z.number()),
+        availability: z.any().optional(),
+        active: z.boolean().optional().default(true),
+      });
+
+      const validatedData = trainerSchema.parse(req.body);
+      const trainer = await storage.createTrainer(validatedData);
+      res.json(trainer);
+    } catch (error: any) {
+      console.error("Error creating trainer:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid trainer data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create trainer" });
+    }
+  });
+
+  app.put('/api/admin/trainers/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      
+      const updateTrainerSchema = z.object({
+        name: z.string().min(1).optional(),
+        bio: z.string().optional(),
+        specialization: z.string().min(1).optional(),
+        experience: z.number().optional(),
+        certification: z.string().optional(),
+        imageUrl: z.string().optional(),
+        pricePerSession: z.string().or(z.number()).optional(),
+        availability: z.any().optional(),
+        active: z.boolean().optional(),
+      });
+
+      const validatedData = updateTrainerSchema.parse(req.body);
+      await storage.updateTrainer(id, validatedData);
+      res.json({ message: 'Trainer updated successfully' });
+    } catch (error: any) {
+      console.error("Error updating trainer:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid trainer data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update trainer" });
+    }
+  });
+
+  app.delete('/api/admin/trainers/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      await storage.deleteTrainer(id);
+      res.json({ message: 'Trainer deleted successfully' });
+    } catch (error) {
+      console.error("Error deleting trainer:", error);
+      res.status(500).json({ message: "Failed to delete trainer" });
+    }
+  });
+
+  // PT Booking routes
+  app.get('/api/pt-bookings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const bookings = await storage.getUserPtBookings(userId);
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error fetching PT bookings:", error);
+      res.status(500).json({ message: "Failed to fetch PT bookings" });
+    }
+  });
+
+  app.post('/api/pt-bookings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+
+      const ptBookingSchema = z.object({
+        trainerId: z.string().min(1, "Trainer ID is required"),
+        bookingDate: z.string().min(1, "Booking date is required"),
+        duration: z.number().optional().default(60),
+        notes: z.string().optional(),
+      });
+
+      const validatedData = ptBookingSchema.parse(req.body);
+
+      const booking = await storage.createPtBooking({
+        userId,
+        trainerId: validatedData.trainerId,
+        bookingDate: new Date(validatedData.bookingDate),
+        duration: validatedData.duration,
+        notes: validatedData.notes,
+        status: 'pending',
+      });
+
+      res.json(booking);
+    } catch (error: any) {
+      console.error("Error creating PT booking:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid booking data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create PT booking" });
+    }
+  });
+
+  app.put('/api/pt-bookings/:id/cancel', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.cancelPtBooking(id);
+      res.json({ message: 'PT booking cancelled successfully' });
+    } catch (error) {
+      console.error("Error cancelling PT booking:", error);
+      res.status(500).json({ message: "Failed to cancel PT booking" });
+    }
+  });
+
+  // Admin PT booking management
+  app.get('/api/admin/pt-bookings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const bookings = await storage.getAllPtBookings();
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error fetching PT bookings:", error);
+      res.status(500).json({ message: "Failed to fetch PT bookings" });
+    }
+  });
+
+  app.put('/api/admin/pt-bookings/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ message: 'Status is required' });
+      }
+
+      await storage.updatePtBookingStatus(id, status);
+      res.json({ message: 'PT booking updated successfully' });
+    } catch (error) {
+      console.error("Error updating PT booking:", error);
+      res.status(500).json({ message: "Failed to update PT booking" });
+    }
+  });
+
   // Indonesian Payment Gateway Routes
   
   // QRIS Payment

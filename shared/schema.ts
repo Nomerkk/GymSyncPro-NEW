@@ -128,6 +128,35 @@ export const feedbacks = pgTable("feedbacks", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Personal Trainers
+export const personalTrainers = pgTable("personal_trainers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  bio: text("bio"),
+  specialization: varchar("specialization").notNull(),
+  experience: integer("experience"), // years of experience
+  certification: text("certification"),
+  imageUrl: varchar("image_url"),
+  pricePerSession: decimal("price_per_session", { precision: 10, scale: 2 }).notNull(),
+  availability: jsonb("availability"), // Store available days/times
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// PT Bookings
+export const ptBookings = pgTable("pt_bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  trainerId: varchar("trainer_id").notNull().references(() => personalTrainers.id),
+  bookingDate: timestamp("booking_date").notNull(),
+  duration: integer("duration").default(60), // minutes
+  status: varchar("status").default("pending"), // pending, confirmed, completed, cancelled
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
@@ -135,6 +164,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   checkIns: many(checkIns),
   payments: many(payments),
   feedbacks: many(feedbacks),
+  ptBookings: many(ptBookings),
 }));
 
 export const membershipPlansRelations = relations(membershipPlans, ({ many }) => ({
@@ -190,6 +220,21 @@ export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
   user: one(users, {
     fields: [feedbacks.userId],
     references: [users.id],
+  }),
+}));
+
+export const personalTrainersRelations = relations(personalTrainers, ({ many }) => ({
+  bookings: many(ptBookings),
+}));
+
+export const ptBookingsRelations = relations(ptBookings, ({ one }) => ({
+  user: one(users, {
+    fields: [ptBookings.userId],
+    references: [users.id],
+  }),
+  trainer: one(personalTrainers, {
+    fields: [ptBookings.trainerId],
+    references: [personalTrainers.id],
   }),
 }));
 
@@ -256,6 +301,18 @@ export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
   updatedAt: true,
 });
 
+export const insertPersonalTrainerSchema = createInsertSchema(personalTrainers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPtBookingSchema = createInsertSchema(ptBookings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type UpsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -275,3 +332,7 @@ export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type Feedback = typeof feedbacks.$inferSelect;
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
+export type PersonalTrainer = typeof personalTrainers.$inferSelect;
+export type InsertPersonalTrainer = z.infer<typeof insertPersonalTrainerSchema>;
+export type PtBooking = typeof ptBookings.$inferSelect;
+export type InsertPtBooking = z.infer<typeof insertPtBookingSchema>;

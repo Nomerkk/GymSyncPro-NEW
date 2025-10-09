@@ -7,6 +7,8 @@ import {
   checkIns,
   payments,
   feedbacks,
+  personalTrainers,
+  ptBookings,
   type User,
   type UpsertUser,
   type Membership,
@@ -23,6 +25,10 @@ import {
   type InsertPayment,
   type Feedback,
   type InsertFeedback,
+  type PersonalTrainer,
+  type InsertPersonalTrainer,
+  type PtBooking,
+  type InsertPtBooking,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, count, sum } from "drizzle-orm";
@@ -78,6 +84,22 @@ export interface IStorage {
   getUserFeedbacks(userId: string): Promise<Feedback[]>;
   getAllFeedbacks(): Promise<(Feedback & { user: User })[]>;
   updateFeedbackStatus(id: string, status: string, adminResponse?: string): Promise<void>;
+  
+  // Personal Trainer operations
+  getAllTrainers(): Promise<PersonalTrainer[]>;
+  getActiveTrainers(): Promise<PersonalTrainer[]>;
+  getTrainerById(id: string): Promise<PersonalTrainer | undefined>;
+  createTrainer(trainer: InsertPersonalTrainer): Promise<PersonalTrainer>;
+  updateTrainer(id: string, trainer: Partial<InsertPersonalTrainer>): Promise<void>;
+  deleteTrainer(id: string): Promise<void>;
+  
+  // PT Booking operations
+  getUserPtBookings(userId: string): Promise<(PtBooking & { trainer: PersonalTrainer })[]>;
+  getAllPtBookings(): Promise<(PtBooking & { user: User; trainer: PersonalTrainer })[]>;
+  getPtBookingById(id: string): Promise<(PtBooking & { user: User; trainer: PersonalTrainer }) | undefined>;
+  createPtBooking(booking: InsertPtBooking): Promise<PtBooking>;
+  updatePtBookingStatus(id: string, status: string): Promise<void>;
+  cancelPtBooking(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -675,6 +697,172 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date(),
       })
       .where(eq(feedbacks.id, id));
+  }
+
+  // Personal Trainer operations
+  async getAllTrainers(): Promise<PersonalTrainer[]> {
+    return await db.select().from(personalTrainers).orderBy(desc(personalTrainers.createdAt));
+  }
+
+  async getActiveTrainers(): Promise<PersonalTrainer[]> {
+    return await db.select().from(personalTrainers).where(eq(personalTrainers.active, true)).orderBy(desc(personalTrainers.createdAt));
+  }
+
+  async getTrainerById(id: string): Promise<PersonalTrainer | undefined> {
+    const [trainer] = await db.select().from(personalTrainers).where(eq(personalTrainers.id, id));
+    return trainer;
+  }
+
+  async createTrainer(trainerData: InsertPersonalTrainer): Promise<PersonalTrainer> {
+    const [trainer] = await db.insert(personalTrainers).values(trainerData).returning();
+    return trainer;
+  }
+
+  async updateTrainer(id: string, trainerData: Partial<InsertPersonalTrainer>): Promise<void> {
+    await db
+      .update(personalTrainers)
+      .set({
+        ...trainerData,
+        updatedAt: new Date(),
+      })
+      .where(eq(personalTrainers.id, id));
+  }
+
+  async deleteTrainer(id: string): Promise<void> {
+    await db.update(personalTrainers).set({ active: false, updatedAt: new Date() }).where(eq(personalTrainers.id, id));
+  }
+
+  // PT Booking operations
+  async getUserPtBookings(userId: string): Promise<(PtBooking & { trainer: PersonalTrainer })[]> {
+    const result = await db
+      .select({
+        id: ptBookings.id,
+        userId: ptBookings.userId,
+        trainerId: ptBookings.trainerId,
+        bookingDate: ptBookings.bookingDate,
+        duration: ptBookings.duration,
+        status: ptBookings.status,
+        notes: ptBookings.notes,
+        createdAt: ptBookings.createdAt,
+        updatedAt: ptBookings.updatedAt,
+        trainer: personalTrainers,
+      })
+      .from(ptBookings)
+      .innerJoin(personalTrainers, eq(ptBookings.trainerId, personalTrainers.id))
+      .where(eq(ptBookings.userId, userId))
+      .orderBy(desc(ptBookings.bookingDate));
+
+    return result.map(row => ({
+      id: row.id,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      bookingDate: row.bookingDate,
+      duration: row.duration,
+      status: row.status,
+      notes: row.notes,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      trainer: row.trainer,
+    }));
+  }
+
+  async getAllPtBookings(): Promise<(PtBooking & { user: User; trainer: PersonalTrainer })[]> {
+    const result = await db
+      .select({
+        id: ptBookings.id,
+        userId: ptBookings.userId,
+        trainerId: ptBookings.trainerId,
+        bookingDate: ptBookings.bookingDate,
+        duration: ptBookings.duration,
+        status: ptBookings.status,
+        notes: ptBookings.notes,
+        createdAt: ptBookings.createdAt,
+        updatedAt: ptBookings.updatedAt,
+        user: users,
+        trainer: personalTrainers,
+      })
+      .from(ptBookings)
+      .innerJoin(users, eq(ptBookings.userId, users.id))
+      .innerJoin(personalTrainers, eq(ptBookings.trainerId, personalTrainers.id))
+      .orderBy(desc(ptBookings.bookingDate));
+
+    return result.map(row => ({
+      id: row.id,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      bookingDate: row.bookingDate,
+      duration: row.duration,
+      status: row.status,
+      notes: row.notes,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: row.user,
+      trainer: row.trainer,
+    }));
+  }
+
+  async getPtBookingById(id: string): Promise<(PtBooking & { user: User; trainer: PersonalTrainer }) | undefined> {
+    const result = await db
+      .select({
+        id: ptBookings.id,
+        userId: ptBookings.userId,
+        trainerId: ptBookings.trainerId,
+        bookingDate: ptBookings.bookingDate,
+        duration: ptBookings.duration,
+        status: ptBookings.status,
+        notes: ptBookings.notes,
+        createdAt: ptBookings.createdAt,
+        updatedAt: ptBookings.updatedAt,
+        user: users,
+        trainer: personalTrainers,
+      })
+      .from(ptBookings)
+      .innerJoin(users, eq(ptBookings.userId, users.id))
+      .innerJoin(personalTrainers, eq(ptBookings.trainerId, personalTrainers.id))
+      .where(eq(ptBookings.id, id))
+      .limit(1);
+
+    if (result.length === 0) return undefined;
+
+    const row = result[0];
+    return {
+      id: row.id,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      bookingDate: row.bookingDate,
+      duration: row.duration,
+      status: row.status,
+      notes: row.notes,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: row.user,
+      trainer: row.trainer,
+    };
+  }
+
+  async createPtBooking(bookingData: InsertPtBooking): Promise<PtBooking> {
+    const [booking] = await db.insert(ptBookings).values(bookingData).returning();
+    return booking;
+  }
+
+  async updatePtBookingStatus(id: string, status: string): Promise<void> {
+    await db
+      .update(ptBookings)
+      .set({
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(ptBookings.id, id));
+  }
+
+  async cancelPtBooking(id: string): Promise<void> {
+    await db
+      .update(ptBookings)
+      .set({
+        status: "cancelled",
+        updatedAt: new Date(),
+      })
+      .where(eq(ptBookings.id, id));
   }
 }
 

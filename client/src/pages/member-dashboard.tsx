@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import QRModal from "@/components/qr-modal";
 import PaymentModal from "@/components/payment-modal";
 import FeedbackModal from "@/components/feedback-modal";
@@ -65,6 +69,53 @@ export default function MemberDashboard() {
     queryKey: ["/api/notifications/expiring"],
     enabled: isAuthenticated,
     retry: false,
+  });
+
+  const { data: trainers } = useQuery({
+    queryKey: ["/api/trainers"],
+    enabled: isAuthenticated,
+    retry: false,
+  });
+
+  const [selectedTrainer, setSelectedTrainer] = useState<any>(null);
+  const [ptBookingDate, setPtBookingDate] = useState("");
+  const [ptNotes, setPtNotes] = useState("");
+  const [showPtBookingModal, setShowPtBookingModal] = useState(false);
+
+  const bookPtMutation = useMutation({
+    mutationFn: async (data: { trainerId: string; bookingDate: string; notes?: string }) => {
+      const response = await apiRequest("POST", "/api/pt-bookings", data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pt-bookings"] });
+      setShowPtBookingModal(false);
+      setPtBookingDate("");
+      setPtNotes("");
+      setSelectedTrainer(null);
+      toast({
+        title: "Success",
+        description: "PT session booked successfully!",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to book PT session",
+        variant: "destructive",
+      });
+    },
   });
 
   const generateQRMutation = useMutation({
@@ -467,6 +518,64 @@ export default function MemberDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Personal Trainers */}
+            <Card className="shadow-sm">
+              <CardHeader className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                  <div>
+                    <CardTitle className="text-lg sm:text-xl">Personal Trainers</CardTitle>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Book one-on-one sessions with our expert trainers</p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-6 sm:pt-0">
+                {!trainers || trainers.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">No trainers available</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:gap-4">
+                    {trainers.map((trainer: any) => (
+                      <Card key={trainer.id} className="border">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-4 mb-3">
+                            <Avatar className="h-16 w-16 flex-shrink-0">
+                              <AvatarImage src={trainer.imageUrl} alt={trainer.name} />
+                              <AvatarFallback className="bg-primary text-primary-foreground text-lg">
+                                {trainer.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-foreground">{trainer.name}</h4>
+                              <p className="text-sm text-primary font-medium">{trainer.specialization}</p>
+                              {trainer.experience && (
+                                <p className="text-xs text-muted-foreground mt-1">{trainer.experience} years experience</p>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-lg font-bold text-foreground">Rp{parseFloat(trainer.pricePerSession).toLocaleString('id-ID')}</p>
+                              <p className="text-xs text-muted-foreground">per session</p>
+                            </div>
+                          </div>
+                          {trainer.bio && (
+                            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{trainer.bio}</p>
+                          )}
+                          <Button
+                            onClick={() => {
+                              setSelectedTrainer(trainer);
+                              setShowPtBookingModal(true);
+                            }}
+                            className="w-full gym-gradient text-white"
+                            data-testid={`button-book-trainer-${trainer.id}`}
+                          >
+                            Book Session
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           {/* Right Column */}
@@ -611,6 +720,97 @@ export default function MemberDashboard() {
         open={showFeedbackModal}
         onOpenChange={setShowFeedbackModal}
       />
+
+      {/* PT Booking Modal */}
+      <Dialog open={showPtBookingModal} onOpenChange={setShowPtBookingModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Book PT Session</DialogTitle>
+            <DialogDescription>
+              Schedule a personal training session with {selectedTrainer?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTrainer && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={selectedTrainer.imageUrl} alt={selectedTrainer.name} />
+                  <AvatarFallback className="bg-primary text-primary-foreground">
+                    {selectedTrainer.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-semibold text-foreground">{selectedTrainer.name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedTrainer.specialization}</p>
+                  <p className="text-sm font-medium text-primary">Rp{parseFloat(selectedTrainer.pricePerSession).toLocaleString('id-ID')}/session</p>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="booking-date">Booking Date & Time</Label>
+                <Input
+                  id="booking-date"
+                  type="datetime-local"
+                  value={ptBookingDate}
+                  onChange={(e) => setPtBookingDate(e.target.value)}
+                  required
+                  data-testid="input-pt-booking-date"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="booking-notes">Notes (Optional)</Label>
+                <Textarea
+                  id="booking-notes"
+                  placeholder="Any specific goals or requirements..."
+                  value={ptNotes}
+                  onChange={(e) => setPtNotes(e.target.value)}
+                  rows={3}
+                  data-testid="textarea-pt-notes"
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowPtBookingModal(false);
+                    setPtBookingDate("");
+                    setPtNotes("");
+                    setSelectedTrainer(null);
+                  }}
+                  className="flex-1"
+                  data-testid="button-cancel-pt-booking"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!ptBookingDate) {
+                      toast({
+                        title: "Error",
+                        description: "Please select a booking date",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    bookPtMutation.mutate({
+                      trainerId: selectedTrainer.id,
+                      bookingDate: new Date(ptBookingDate).toISOString(),
+                      notes: ptNotes || undefined,
+                    });
+                  }}
+                  disabled={bookPtMutation.isPending}
+                  className="flex-1 gym-gradient text-white"
+                  data-testid="button-confirm-pt-booking"
+                >
+                  {bookPtMutation.isPending ? "Booking..." : "Confirm Booking"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
