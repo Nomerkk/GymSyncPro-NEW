@@ -6,6 +6,7 @@ import {
   classBookings,
   checkIns,
   payments,
+  feedbacks,
   type User,
   type UpsertUser,
   type Membership,
@@ -20,6 +21,8 @@ import {
   type InsertCheckIn,
   type Payment,
   type InsertPayment,
+  type Feedback,
+  type InsertFeedback,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, count, sum } from "drizzle-orm";
@@ -68,6 +71,12 @@ export interface IStorage {
   getUsersWithMemberships(): Promise<(User & { membership?: Membership & { plan: MembershipPlan } })[]>;
   getRevenueStats(): Promise<{ total: number; thisMonth: number; lastMonth: number }>;
   getMembershipStats(): Promise<{ total: number; active: number; expiringSoon: number }>;
+  
+  // Feedback operations
+  createFeedback(feedback: InsertFeedback): Promise<Feedback>;
+  getUserFeedbacks(userId: string): Promise<Feedback[]>;
+  getAllFeedbacks(): Promise<(Feedback & { user: User })[]>;
+  updateFeedbackStatus(id: string, status: string, adminResponse?: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -580,6 +589,59 @@ export class DatabaseStorage implements IStorage {
       active: activeResult?.count || 0,
       expiringSoon: expiringSoonResult?.count || 0,
     };
+  }
+
+  // Feedback operations
+  async createFeedback(feedbackData: InsertFeedback): Promise<Feedback> {
+    const [feedback] = await db.insert(feedbacks).values(feedbackData).returning();
+    return feedback;
+  }
+
+  async getUserFeedbacks(userId: string): Promise<Feedback[]> {
+    return await db.select().from(feedbacks).where(eq(feedbacks.userId, userId)).orderBy(desc(feedbacks.createdAt));
+  }
+
+  async getAllFeedbacks(): Promise<(Feedback & { user: User })[]> {
+    const result = await db
+      .select({
+        id: feedbacks.id,
+        userId: feedbacks.userId,
+        subject: feedbacks.subject,
+        message: feedbacks.message,
+        rating: feedbacks.rating,
+        status: feedbacks.status,
+        adminResponse: feedbacks.adminResponse,
+        createdAt: feedbacks.createdAt,
+        updatedAt: feedbacks.updatedAt,
+        user: users,
+      })
+      .from(feedbacks)
+      .leftJoin(users, eq(feedbacks.userId, users.id))
+      .orderBy(desc(feedbacks.createdAt));
+
+    return result.map(row => ({
+      id: row.id,
+      userId: row.userId,
+      subject: row.subject,
+      message: row.message,
+      rating: row.rating,
+      status: row.status,
+      adminResponse: row.adminResponse,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: row.user!,
+    }));
+  }
+
+  async updateFeedbackStatus(id: string, status: string, adminResponse?: string): Promise<void> {
+    await db
+      .update(feedbacks)
+      .set({
+        status,
+        adminResponse,
+        updatedAt: new Date(),
+      })
+      .where(eq(feedbacks.id, id));
   }
 }
 
