@@ -669,7 +669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         experience: z.number().optional(),
         certification: z.string().optional(),
         imageUrl: z.string().optional(),
-        pricePerSession: z.string().or(z.number()),
+        pricePerSession: z.string().or(z.number()).transform(val => String(val)),
         availability: z.any().optional(),
         active: z.boolean().optional().default(true),
       });
@@ -704,7 +704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         experience: z.number().optional(),
         certification: z.string().optional(),
         imageUrl: z.string().optional(),
-        pricePerSession: z.string().or(z.number()).optional(),
+        pricePerSession: z.string().or(z.number()).transform(val => String(val)).optional(),
         availability: z.any().optional(),
         active: z.boolean().optional(),
       });

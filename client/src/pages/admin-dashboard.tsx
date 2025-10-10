@@ -10,8 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Navigation from "@/components/ui/navigation";
 import AdminCheckInModal from "@/components/admin-checkin-modal";
-import { queryClient } from "@/lib/queryClient";
+import AdminPTDialog from "@/components/admin-pt-dialog";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
+import type { PersonalTrainer } from "@shared/schema";
 import {
   Users,
   CalendarCheck,
@@ -27,7 +29,72 @@ import {
   LogIn,
   MessageSquare,
   Star,
+  Dumbbell,
 } from "lucide-react";
+
+interface AdminDashboardStats {
+  totalMembers?: number;
+  activeToday?: number;
+  expiringSoon?: number;
+  revenue?: {
+    thisMonth?: number;
+    lastMonth?: number;
+    total?: number;
+  };
+}
+
+interface AdminDashboardResponse {
+  stats?: AdminDashboardStats;
+  users?: MemberWithMembership[];
+}
+
+interface MemberWithMembership {
+  id: string;
+  email?: string;
+  username?: string;
+  phone?: string;
+  firstName?: string;
+  lastName?: string;
+  profileImageUrl?: string;
+  membership?: {
+    status?: string;
+    endDate?: string;
+    plan?: {
+      name?: string;
+    };
+  };
+}
+
+interface CheckInRecord {
+  id: string;
+  checkInTime: string;
+  status?: string;
+  user?: {
+    firstName?: string;
+    lastName?: string;
+    profileImageUrl?: string;
+  };
+  membership?: {
+    plan?: {
+      name?: string;
+    };
+  };
+}
+
+interface FeedbackRecord {
+  id: string;
+  subject?: string;
+  message: string;
+  rating?: number;
+  category?: string;
+  createdAt: string;
+  member?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    profileImageUrl?: string;
+  };
+}
 
 export default function AdminDashboard() {
   const { toast } = useToast();
@@ -35,6 +102,8 @@ export default function AdminDashboard() {
   const [memberFilter, setMemberFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [showPTDialog, setShowPTDialog] = useState(false);
+  const [selectedTrainer, setSelectedTrainer] = useState<PersonalTrainer | null>(null);
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -51,27 +120,33 @@ export default function AdminDashboard() {
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
+  const { data: dashboardData, isLoading: dashboardLoading } = useQuery<AdminDashboardResponse>({
     queryKey: ["/api/admin/dashboard"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
   });
 
-  const { data: members } = useQuery({
+  const { data: members } = useQuery<MemberWithMembership[]>({
     queryKey: ["/api/admin/members"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
   });
 
-  const { data: recentCheckIns } = useQuery({
+  const { data: recentCheckIns } = useQuery<CheckInRecord[]>({
     queryKey: ["/api/admin/checkins"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
     refetchInterval: 10000,
   });
 
-  const { data: feedbacks } = useQuery({
+  const { data: feedbacks } = useQuery<FeedbackRecord[]>({
     queryKey: ["/api/admin/feedbacks"],
+    enabled: isAuthenticated && user?.role === 'admin',
+    retry: false,
+  });
+
+  const { data: trainers } = useQuery<PersonalTrainer[]>({
+    queryKey: ["/api/admin/trainers"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
   });
@@ -91,21 +166,6 @@ export default function AdminDashboard() {
   const stats = dashboardData?.stats || {};
   const users = dashboardData?.users || [];
 
-  const filteredMembers = members?.filter((member: any) => {
-    const matchesSearch = !searchTerm || 
-      member.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      `${member.firstName || ''} ${member.lastName || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = memberFilter === "all" ||
-      (memberFilter === "active" && member.membership?.status === "active") ||
-      (memberFilter === "expiring" && member.membership && isExpiringSoon(member.membership.endDate)) ||
-      (memberFilter === "expired" && member.membership?.status === "expired");
-
-    return matchesSearch && matchesFilter;
-  }) || [];
-
   const isExpiringSoon = (endDate: string) => {
     const now = new Date();
     const expiry = new Date(endDate);
@@ -114,13 +174,28 @@ export default function AdminDashboard() {
     return diffDays <= 20 && diffDays > 0;
   };
 
-  const getMembershipStatus = (member: any) => {
+  const getMembershipStatus = (member: MemberWithMembership) => {
     if (!member.membership) return "No Membership";
     if (member.membership.status === "expired") return "Expired";
-    if (isExpiringSoon(member.membership.endDate)) return "Expiring Soon";
+    if (member.membership.endDate && isExpiringSoon(member.membership.endDate)) return "Expiring Soon";
     if (member.membership.status === "active") return "Active";
-    return member.membership.status;
+    return member.membership.status || "Unknown";
   };
+
+  const filteredMembers = members?.filter((member) => {
+    const matchesSearch = !searchTerm || 
+      member.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      member.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      member.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      `${member.firstName || ''} ${member.lastName || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesFilter = memberFilter === "all" ||
+      (memberFilter === "active" && member.membership?.status === "active") ||
+      (memberFilter === "expiring" && member.membership && isExpiringSoon(member.membership.endDate || "")) ||
+      (memberFilter === "expired" && member.membership?.status === "expired");
+
+    return matchesSearch && matchesFilter;
+  }) || [];
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -128,6 +203,38 @@ export default function AdminDashboard() {
       case "Expiring Soon": return "secondary";
       case "Expired": return "destructive";
       default: return "outline";
+    }
+  };
+
+  const handleAddTrainer = () => {
+    setSelectedTrainer(null);
+    setShowPTDialog(true);
+  };
+
+  const handleEditTrainer = (trainer: PersonalTrainer) => {
+    setSelectedTrainer(trainer);
+    setShowPTDialog(true);
+  };
+
+  const handleDeleteTrainer = async (trainerId: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus personal trainer ini?")) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/api/admin/trainers/${trainerId}`, "DELETE");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trainers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainers"] });
+      toast({
+        title: "Berhasil!",
+        description: "Personal trainer berhasil dihapus",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Gagal menghapus personal trainer",
+        variant: "destructive",
+      });
     }
   };
 
@@ -503,6 +610,122 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Personal Trainers Management Section */}
+        <div className="mt-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Dumbbell className="text-primary" size={20} />
+                    Personal Trainers
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Kelola personal trainer dan harga sesi</p>
+                </div>
+                <Button 
+                  onClick={handleAddTrainer}
+                  className="gym-gradient text-white"
+                  data-testid="button-add-trainer"
+                >
+                  <UserPlus className="mr-2" size={16} />
+                  Tambah Trainer
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              {!trainers || trainers.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Dumbbell className="mx-auto mb-3" size={48} />
+                  <p className="text-lg font-medium">Belum Ada Personal Trainer</p>
+                  <p className="text-sm mt-1">Tambahkan personal trainer pertama Anda</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {trainers.map((trainer: PersonalTrainer) => (
+                    <div 
+                      key={trainer.id} 
+                      className="border border-border rounded-lg p-4 hover:shadow-md transition-shadow"
+                      data-testid={`card-trainer-${trainer.id}`}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-12 w-12">
+                            <AvatarImage src={trainer.imageUrl || undefined} />
+                            <AvatarFallback className="gym-gradient text-white">
+                              {trainer.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-semibold text-foreground">{trainer.name}</p>
+                            <p className="text-xs text-muted-foreground">{trainer.specialization}</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {trainer.bio && (
+                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                          {trainer.bio}
+                        </p>
+                      )}
+                      
+                      <div className="space-y-2 mb-4">
+                        {trainer.experience && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Clock size={14} className="text-muted-foreground" />
+                            <span className="text-muted-foreground">{trainer.experience} tahun pengalaman</span>
+                          </div>
+                        )}
+                        {trainer.certification && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Badge variant="outline" className="text-xs">
+                              {trainer.certification}
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 border-t border-border">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Harga per Sesi</p>
+                          <p className="text-lg font-bold text-foreground" data-testid={`text-price-${trainer.id}`}>
+                            ${trainer.pricePerSession}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditTrainer(trainer)}
+                            data-testid={`button-edit-trainer-${trainer.id}`}
+                          >
+                            <Edit size={16} />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteTrainer(trainer.id)}
+                            data-testid={`button-delete-trainer-${trainer.id}`}
+                          >
+                            <Trash2 size={16} className="text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <Badge 
+                        variant={trainer.active ? "default" : "secondary"}
+                        className="mt-3 w-full justify-center"
+                      >
+                        {trainer.active ? "Aktif" : "Tidak Aktif"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Member Feedback Section */}
         <div className="mt-8">
           <Card>
@@ -602,6 +825,13 @@ export default function AdminDashboard() {
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["/api/admin/checkins"] });
         }}
+      />
+
+      {/* Personal Trainer Dialog */}
+      <AdminPTDialog
+        open={showPTDialog}
+        onOpenChange={setShowPTDialog}
+        trainer={selectedTrainer}
       />
     </div>
   );
