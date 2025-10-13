@@ -10,6 +10,7 @@ import {
   personalTrainers,
   ptBookings,
   oneTimeQrCodes,
+  passwordResetTokens,
   type User,
   type UpsertUser,
   type Membership,
@@ -32,6 +33,8 @@ import {
   type InsertPtBooking,
   type OneTimeQrCode,
   type InsertOneTimeQrCode,
+  type PasswordResetToken,
+  type InsertPasswordResetToken,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, count, sum } from "drizzle-orm";
@@ -123,6 +126,13 @@ export interface IStorage {
   createPtBooking(booking: InsertPtBooking): Promise<PtBooking>;
   updatePtBookingStatus(id: string, status: string): Promise<void>;
   cancelPtBooking(id: string): Promise<void>;
+  
+  // Password Reset operations
+  createPasswordResetToken(email: string, token: string): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  markTokenAsUsed(token: string): Promise<void>;
+  cleanupExpiredResetTokens(): Promise<number>;
+  updateUserPassword(email: string, newPassword: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1224,6 +1234,72 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return result.length;
+  }
+
+  // Password Reset operations
+  async createPasswordResetToken(email: string, token: string): Promise<PasswordResetToken> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+
+    const [resetToken] = await db
+      .insert(passwordResetTokens)
+      .values({
+        email,
+        token,
+        expiresAt,
+        status: 'valid',
+      })
+      .returning();
+    
+    return resetToken;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [resetToken] = await db
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, token))
+      .limit(1);
+    
+    return resetToken;
+  }
+
+  async markTokenAsUsed(token: string): Promise<void> {
+    await db
+      .update(passwordResetTokens)
+      .set({
+        status: 'used',
+        usedAt: new Date(),
+      })
+      .where(and(
+        eq(passwordResetTokens.token, token),
+        eq(passwordResetTokens.status, 'valid')
+      ));
+  }
+
+  async cleanupExpiredResetTokens(): Promise<number> {
+    const now = new Date();
+    
+    const result = await db
+      .update(passwordResetTokens)
+      .set({ status: 'expired' })
+      .where(and(
+        eq(passwordResetTokens.status, 'valid'),
+        lte(passwordResetTokens.expiresAt, now)
+      ))
+      .returning();
+    
+    return result.length;
+  }
+
+  async updateUserPassword(email: string, newPassword: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ 
+        password: newPassword,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.email, email));
   }
 }
 

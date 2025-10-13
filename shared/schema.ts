@@ -170,6 +170,17 @@ export const oneTimeQrCodes = pgTable("one_time_qr_codes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Password reset tokens
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").notNull(),
+  token: varchar("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  status: varchar("status").default("valid"), // valid, used, expired
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
@@ -259,6 +270,13 @@ export const oneTimeQrCodesRelations = relations(oneTimeQrCodes, ({ one }) => ({
   }),
 }));
 
+export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [passwordResetTokens.email],
+    references: [users.email],
+  }),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -341,6 +359,25 @@ export const insertOneTimeQrCodeSchema = createInsertSchema(oneTimeQrCodes).omit
   createdAt: true,
 });
 
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Forgot password schemas
+export const forgotPasswordRequestSchema = z.object({
+  email: z.string().email("Email tidak valid"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, "Token diperlukan"),
+  newPassword: z.string().min(6, "Password minimal 6 karakter"),
+  confirmPassword: z.string(),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "Password tidak cocok",
+  path: ["confirmPassword"],
+});
+
 // Cookie Preferences Schema
 export const cookiePreferencesSchema = z.object({
   necessary: z.boolean().default(true),
@@ -383,5 +420,9 @@ export type PtBooking = typeof ptBookings.$inferSelect;
 export type InsertPtBooking = z.infer<typeof insertPtBookingSchema>;
 export type OneTimeQrCode = typeof oneTimeQrCodes.$inferSelect;
 export type InsertOneTimeQrCode = z.infer<typeof insertOneTimeQrCodeSchema>;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type CookiePreferences = z.infer<typeof cookiePreferencesSchema>;
 export type CookieSettings = z.infer<typeof cookieSettingsSchema>;
