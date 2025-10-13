@@ -238,8 +238,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get or generate permanent QR code for user
       const qrCode = await storage.ensureUserPermanentQrCode(userId);
+      
+      // Get membership info
+      const membership = await storage.getUserMembership(userId);
+      
+      // Check if membership is active
+      const hasActiveMembership = membership && new Date(membership.endDate) > new Date();
 
-      res.json({ qrCode });
+      res.json({ 
+        qrCode, 
+        membership,
+        hasActiveMembership 
+      });
     } catch (error) {
       console.error("Error generating QR code:", error);
       res.status(500).json({ message: "Failed to generate QR code" });
