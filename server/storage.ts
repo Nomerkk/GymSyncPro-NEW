@@ -56,6 +56,7 @@ export interface IStorage {
   updateGymClass(id: string, gymClass: Partial<InsertGymClass>): Promise<void>;
   deleteGymClass(id: string): Promise<void>;
   getUserClassBookings(userId: string): Promise<(ClassBooking & { gymClass: GymClass })[]>;
+  getAllClassBookings(): Promise<(ClassBooking & { user: User; gymClass: GymClass })[]>;
   bookClass(booking: InsertClassBooking): Promise<ClassBooking>;
   cancelClassBooking(id: string): Promise<void>;
   
@@ -254,6 +255,24 @@ export class DatabaseStorage implements IStorage {
       .from(classBookings)
       .innerJoin(gymClasses, eq(classBookings.classId, gymClasses.id))
       .where(eq(classBookings.userId, userId))
+      .orderBy(desc(classBookings.bookingDate));
+  }
+
+  async getAllClassBookings(): Promise<(ClassBooking & { user: User; gymClass: GymClass })[]> {
+    return await db
+      .select({
+        id: classBookings.id,
+        userId: classBookings.userId,
+        classId: classBookings.classId,
+        bookingDate: classBookings.bookingDate,
+        status: classBookings.status,
+        createdAt: classBookings.createdAt,
+        user: users,
+        gymClass: gymClasses,
+      })
+      .from(classBookings)
+      .innerJoin(users, eq(classBookings.userId, users.id))
+      .innerJoin(gymClasses, eq(classBookings.classId, gymClasses.id))
       .orderBy(desc(classBookings.bookingDate));
   }
 

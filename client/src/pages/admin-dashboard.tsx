@@ -160,6 +160,18 @@ export default function AdminDashboard() {
     retry: false,
   });
 
+  const { data: classBookings } = useQuery<any[]>({
+    queryKey: ["/api/admin/class-bookings"],
+    enabled: isAuthenticated && user?.role === 'admin',
+    retry: false,
+  });
+
+  const { data: ptBookings } = useQuery<any[]>({
+    queryKey: ["/api/admin/pt-bookings"],
+    enabled: isAuthenticated && user?.role === 'admin',
+    retry: false,
+  });
+
   if (isLoading || dashboardLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -949,6 +961,194 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Class Bookings Section */}
+        <div className="mt-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarCheck className="text-primary" size={20} />
+                    Class Bookings
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Lihat semua booking class dari member</p>
+                </div>
+                <Badge variant="outline" className="text-sm" data-testid="text-class-bookings-count">
+                  {classBookings?.length || 0} Total
+                </Badge>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              {!classBookings || classBookings.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <CalendarCheck className="mx-auto mb-3" size={48} />
+                  <p className="text-lg font-medium">Belum Ada Booking Class</p>
+                  <p className="text-sm mt-1">Booking class dari member akan muncul di sini</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Member
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Class
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Tanggal
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {classBookings.map((booking: any) => (
+                        <tr key={booking.id} data-testid={`class-booking-row-${booking.id}`}>
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-medium text-foreground">
+                              {`${booking.user?.firstName || ''} ${booking.user?.lastName || ''}`.trim()}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{booking.user?.email}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-medium text-foreground">{booking.gymClass?.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {booking.gymClass?.instructorName}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-foreground">
+                            {new Date(booking.bookingDate).toLocaleDateString('id-ID', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })}
+                          </td>
+                          <td className="px-6 py-4">
+                            <Badge 
+                              variant={
+                                booking.status === 'booked' ? 'default' :
+                                booking.status === 'cancelled' ? 'destructive' :
+                                'secondary'
+                              }
+                            >
+                              {booking.status === 'booked' ? 'Terdaftar' :
+                               booking.status === 'cancelled' ? 'Dibatalkan' :
+                               booking.status === 'attended' ? 'Hadir' : booking.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* PT Bookings Section */}
+        <div className="mt-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Dumbbell className="text-primary" size={20} />
+                    Personal Trainer Bookings
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Lihat semua booking sesi PT dari member</p>
+                </div>
+                <Badge variant="outline" className="text-sm" data-testid="text-pt-bookings-count">
+                  {ptBookings?.length || 0} Total
+                </Badge>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              {!ptBookings || ptBookings.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Dumbbell className="mx-auto mb-3" size={48} />
+                  <p className="text-lg font-medium">Belum Ada Booking PT</p>
+                  <p className="text-sm mt-1">Booking sesi PT dari member akan muncul di sini</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Member
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Trainer
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Tanggal & Waktu
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Durasi
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {ptBookings.map((booking: any) => (
+                        <tr key={booking.id} data-testid={`pt-booking-row-${booking.id}`}>
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-medium text-foreground">
+                              {`${booking.user?.firstName || ''} ${booking.user?.lastName || ''}`.trim()}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{booking.user?.email}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-medium text-foreground">{booking.trainer?.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {booking.trainer?.specialization}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-foreground">
+                            {new Date(booking.bookingDate).toLocaleString('id-ID', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-foreground">
+                            {booking.duration} menit
+                          </td>
+                          <td className="px-6 py-4">
+                            <Badge 
+                              variant={
+                                booking.status === 'confirmed' ? 'default' :
+                                booking.status === 'cancelled' ? 'destructive' :
+                                booking.status === 'pending' ? 'outline' :
+                                'secondary'
+                              }
+                            >
+                              {booking.status === 'pending' ? 'Menunggu' :
+                               booking.status === 'confirmed' ? 'Dikonfirmasi' :
+                               booking.status === 'cancelled' ? 'Dibatalkan' :
+                               booking.status === 'completed' ? 'Selesai' : booking.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>

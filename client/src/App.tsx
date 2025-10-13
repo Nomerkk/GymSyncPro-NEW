@@ -11,6 +11,7 @@ import RegisterAdmin from "@/pages/register-admin";
 import MemberDashboard from "@/pages/member-dashboard";
 import AdminDashboard from "@/pages/admin-dashboard";
 import Checkout from "@/pages/checkout";
+import MyBookings from "@/pages/my-bookings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -41,6 +42,7 @@ function Router() {
           <Route path="/" component={user?.role === 'admin' ? AdminDashboard : MemberDashboard} />
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/checkout" component={Checkout} />
+          <Route path="/my-bookings" component={MyBookings} />
         </>
       )}
       <Route component={NotFound} />

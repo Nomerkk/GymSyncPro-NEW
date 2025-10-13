@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Dumbbell, Bell, ShieldQuestion, LogOut } from "lucide-react";
+import { Dumbbell, Bell, ShieldQuestion, LogOut, Calendar, Home } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import logoPath from "@assets/image_1759411904981.png";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -12,6 +13,8 @@ interface NavigationProps {
 }
 
 export default function Navigation({ user, isAdmin = false, notificationCount = 0 }: NavigationProps) {
+  const [location] = useLocation();
+
   const handleLogout = async () => {
     try {
       await apiRequest("POST", "/api/logout");
@@ -29,7 +32,7 @@ export default function Navigation({ user, isAdmin = false, notificationCount = 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo and Title */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
             {isAdmin ? (
               <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-r from-red-500 to-red-600">
                 <ShieldQuestion className="text-white" size={20} />
@@ -52,6 +55,34 @@ export default function Navigation({ user, isAdmin = false, notificationCount = 
                 </p>
               )}
             </div>
+
+            {/* Navigation Links for Members */}
+            {!isAdmin && (
+              <div className="flex items-center space-x-2 ml-8">
+                <Link href="/">
+                  <Button 
+                    variant={location === "/" ? "default" : "ghost"} 
+                    size="sm"
+                    className="gap-2"
+                    data-testid="link-dashboard"
+                  >
+                    <Home size={16} />
+                    Dashboard
+                  </Button>
+                </Link>
+                <Link href="/my-bookings">
+                  <Button 
+                    variant={location === "/my-bookings" ? "default" : "ghost"} 
+                    size="sm"
+                    className="gap-2"
+                    data-testid="link-my-bookings"
+                  >
+                    <Calendar size={16} />
+                    My Bookings
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* Right side */}

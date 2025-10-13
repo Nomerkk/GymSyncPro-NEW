@@ -284,6 +284,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/class-bookings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const bookings = await storage.getUserClassBookings(userId);
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error fetching class bookings:", error);
+      res.status(500).json({ message: "Failed to fetch class bookings" });
+    }
+  });
+
+  app.put('/api/class-bookings/:id/cancel', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      
+      const userBookings = await storage.getUserClassBookings(userId);
+      const booking = userBookings.find(b => b.id === id);
+      
+      if (!booking) {
+        return res.status(404).json({ message: 'Booking not found or unauthorized' });
+      }
+      
+      if (booking.status === 'cancelled') {
+        return res.status(400).json({ message: 'Booking already cancelled' });
+      }
+      
+      await storage.cancelClassBooking(id);
+      res.json({ message: 'Class booking cancelled successfully' });
+    } catch (error) {
+      console.error("Error cancelling class booking:", error);
+      res.status(500).json({ message: "Failed to cancel class booking" });
+    }
+  });
+
   // Payment routes
   app.get('/api/membership-plans', async (req, res) => {
     try {
@@ -516,6 +551,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting class:", error);
       res.status(500).json({ message: "Failed to delete class" });
+    }
+  });
+
+  app.get('/api/admin/class-bookings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const bookings = await storage.getAllClassBookings();
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error fetching class bookings:", error);
+      res.status(500).json({ message: "Failed to fetch class bookings" });
     }
   });
 
@@ -840,7 +892,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/pt-bookings/:id/cancel', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.id;
       const { id } = req.params;
+      
+      const userBookings = await storage.getUserPtBookings(userId);
+      const booking = userBookings.find(b => b.id === id);
+      
+      if (!booking) {
+        return res.status(404).json({ message: 'Booking not found or unauthorized' });
+      }
+      
+      if (booking.status === 'cancelled') {
+        return res.status(400).json({ message: 'Booking already cancelled' });
+      }
+      
       await storage.cancelPtBooking(id);
       res.json({ message: 'PT booking cancelled successfully' });
     } catch (error) {
