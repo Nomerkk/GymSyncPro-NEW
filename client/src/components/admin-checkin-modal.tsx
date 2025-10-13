@@ -88,7 +88,20 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
         (decodedText) => {
           // QR code successfully scanned
           setQrCode(decodedText);
-          validateMutation.mutate(decodedText);
+          
+          // Extract QR code from URL if it's a full URL
+          // Format: https://example.com/checkin/verify/UUID or just UUID
+          let qrCodeValue = decodedText;
+          if (decodedText.includes('/checkin/verify/')) {
+            const parts = decodedText.split('/checkin/verify/');
+            qrCodeValue = parts[1] || decodedText;
+          } else if (decodedText.includes('/')) {
+            // If it's a URL but different format, get the last part
+            const parts = decodedText.split('/');
+            qrCodeValue = parts[parts.length - 1] || decodedText;
+          }
+          
+          validateMutation.mutate(qrCodeValue);
         },
         (errorMessage) => {
           // Scan error (usually just means no QR code in view, so we ignore it)
