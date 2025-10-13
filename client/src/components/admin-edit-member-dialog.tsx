@@ -32,14 +32,14 @@ type AssignMembershipFormData = z.infer<typeof assignMembershipSchema>;
 
 interface Member {
   id: string;
-  firstName: string;
-  lastName: string;
-  username: string;
-  email: string;
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  email?: string;
   phone?: string;
   membership?: {
     plan?: {
-      name: string;
+      name?: string;
     };
     endDate?: string;
     status?: string;

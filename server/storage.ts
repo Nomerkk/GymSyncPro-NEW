@@ -588,9 +588,11 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .select({
         id: users.id,
+        username: users.username,
         email: users.email,
         firstName: users.firstName,
         lastName: users.lastName,
+        phone: users.phone,
         profileImageUrl: users.profileImageUrl,
         role: users.role,
         stripeCustomerId: users.stripeCustomerId,
@@ -621,9 +623,12 @@ export class DatabaseStorage implements IStorage {
 
     return result.map(row => ({
       id: row.id,
+      username: row.username,
+      password: '', // Never expose password hashes
       email: row.email,
       firstName: row.firstName,
       lastName: row.lastName,
+      phone: row.phone,
       profileImageUrl: row.profileImageUrl,
       role: row.role,
       stripeCustomerId: row.stripeCustomerId,

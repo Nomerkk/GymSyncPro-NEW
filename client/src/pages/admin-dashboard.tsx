@@ -12,6 +12,8 @@ import Navigation from "@/components/ui/navigation";
 import AdminCheckInModal from "@/components/admin-checkin-modal";
 import AdminPTDialog from "@/components/admin-pt-dialog";
 import AdminClassDialog from "@/components/admin-class-dialog";
+import AdminMemberDialog from "@/components/admin-member-dialog";
+import AdminEditMemberDialog from "@/components/admin-edit-member-dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 import type { PersonalTrainer, GymClass } from "@shared/schema";
@@ -107,6 +109,9 @@ export default function AdminDashboard() {
   const [selectedTrainer, setSelectedTrainer] = useState<PersonalTrainer | null>(null);
   const [showClassDialog, setShowClassDialog] = useState(false);
   const [selectedClass, setSelectedClass] = useState<GymClass | null>(null);
+  const [showMemberDialog, setShowMemberDialog] = useState(false);
+  const [showEditMemberDialog, setShowEditMemberDialog] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<MemberWithMembership | null>(null);
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -243,7 +248,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      await apiRequest(`/api/admin/trainers/${trainerId}`, "DELETE");
+      await apiRequest("DELETE", `/api/admin/trainers/${trainerId}`);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/trainers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainers"] });
       toast({
@@ -275,7 +280,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      await apiRequest(`/api/admin/classes/${classId}`, "DELETE");
+      await apiRequest("DELETE", `/api/admin/classes/${classId}`);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/classes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
       toast({
@@ -286,6 +291,37 @@ export default function AdminDashboard() {
       toast({
         title: "Error",
         description: error.message || "Gagal menghapus gym class",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddMember = () => {
+    setShowMemberDialog(true);
+  };
+
+  const handleEditMember = (member: MemberWithMembership) => {
+    setSelectedMember(member);
+    setShowEditMemberDialog(true);
+  };
+
+  const handleDeleteMember = async (memberId: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus member ini? Data member akan dihapus permanen.")) {
+      return;
+    }
+
+    try {
+      await apiRequest("DELETE", `/api/admin/members/${memberId}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
+      toast({
+        title: "Berhasil!",
+        description: "Member berhasil dihapus",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Gagal menghapus member",
         variant: "destructive",
       });
     }
@@ -398,7 +434,11 @@ export default function AdminDashboard() {
                     <CardTitle>Member Management</CardTitle>
                     <p className="text-sm text-muted-foreground">Manage gym member accounts</p>
                   </div>
-                  <Button className="gym-gradient text-white" data-testid="button-add-member">
+                  <Button 
+                    className="gym-gradient text-white" 
+                    onClick={handleAddMember}
+                    data-testid="button-add-member"
+                  >
                     <UserPlus className="mr-2" size={16} />
                     Add New Member
                   </Button>
@@ -504,6 +544,7 @@ export default function AdminDashboard() {
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  onClick={() => handleEditMember(member)}
                                   data-testid={`button-edit-${member.id}`}
                                 >
                                   <Edit size={16} />
@@ -511,6 +552,7 @@ export default function AdminDashboard() {
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  onClick={() => handleDeleteMember(member.id)}
                                   data-testid={`button-delete-${member.id}`}
                                 >
                                   <Trash2 size={16} className="text-destructive" />
@@ -1177,6 +1219,19 @@ export default function AdminDashboard() {
         open={showClassDialog}
         onOpenChange={setShowClassDialog}
         gymClass={selectedClass}
+      />
+
+      {/* Add Member Dialog */}
+      <AdminMemberDialog
+        open={showMemberDialog}
+        onOpenChange={setShowMemberDialog}
+      />
+
+      {/* Edit Member Dialog */}
+      <AdminEditMemberDialog
+        open={showEditMemberDialog}
+        onOpenChange={setShowEditMemberDialog}
+        member={selectedMember}
       />
     </div>
   );
