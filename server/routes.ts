@@ -943,6 +943,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Try to find user by permanent QR code first
       let memberUser = await storage.getUserByPermanentQrCode(qrCode);
+      let isOneTimeQr = false;
       
       // If not found by permanent QR code, try to find by one-time QR code
       if (!memberUser) {
@@ -967,9 +968,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Get user from one-time QR code
           memberUser = await storage.getUser(oneTimeQr.userId);
-          
-          // Mark one-time QR code as used
-          await storage.markQrCodeAsUsed(qrCode);
+          isOneTimeQr = true;
         }
       }
       
@@ -1010,6 +1009,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           success: false,
           message: 'Gagal membuat check-in' 
         });
+      }
+
+      // Mark one-time QR code as used ONLY after successful check-in
+      if (isOneTimeQr) {
+        await storage.markQrCodeAsUsed(qrCode);
       }
 
       res.json({

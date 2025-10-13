@@ -28,6 +28,7 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
   const [memberData, setMemberData] = useState<any>(null);
   const [isScanning, setIsScanning] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const processingRef = useRef<boolean>(false);
   const scannerDivId = "qr-reader";
 
   const validateMutation = useMutation({
@@ -86,7 +87,13 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
         { facingMode: "environment" }, // Use back camera
         config,
         (decodedText) => {
+          // Prevent processing multiple scans
+          if (processingRef.current) {
+            return;
+          }
+          
           // QR code successfully scanned
+          processingRef.current = true;
           setQrCode(decodedText);
           
           // Extract QR code from URL if it's a full URL
@@ -100,6 +107,9 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
             const parts = decodedText.split('/');
             qrCodeValue = parts[parts.length - 1] || decodedText;
           }
+          
+          // Stop scanner immediately to prevent multiple scans
+          stopScanner();
           
           validateMutation.mutate(qrCodeValue);
         },
@@ -139,6 +149,7 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
     await stopScanner();
     setQrCode("");
     setMemberData(null);
+    processingRef.current = false;
     onClose();
   };
 
@@ -146,6 +157,9 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
   // Start camera when modal opens
   useEffect(() => {
     if (open && !isScanning && !memberData) {
+      // Reset processing flag when modal opens
+      processingRef.current = false;
+      
       // Add a small delay to ensure DOM is ready
       const timer = setTimeout(() => {
         startScanner();
