@@ -941,8 +941,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'QR code is required' });
       }
 
-      // Find user by QR code
-      const memberUser = await storage.getUserByPermanentQrCode(qrCode);
+      // Try to find user by permanent QR code first
+      let memberUser = await storage.getUserByPermanentQrCode(qrCode);
+      
+      // If not found by permanent QR code, try to find by one-time QR code
+      if (!memberUser) {
+        const oneTimeQr = await storage.validateOneTimeQrCode(qrCode);
+        
+        if (oneTimeQr) {
+          // Check if QR code is still valid
+          const now = new Date();
+          if (oneTimeQr.status === 'used') {
+            return res.json({
+              success: false,
+              message: 'QR code sudah pernah digunakan'
+            });
+          }
+          
+          if (oneTimeQr.status === 'expired' || oneTimeQr.expiresAt < now) {
+            return res.json({
+              success: false,
+              message: 'QR code sudah kadaluarsa. Silakan generate QR baru'
+            });
+          }
+          
+          // Get user from one-time QR code
+          memberUser = await storage.getUser(oneTimeQr.userId);
+          
+          // Mark one-time QR code as used
+          await storage.markQrCodeAsUsed(qrCode);
+        }
+      }
       
       if (!memberUser) {
         return res.status(404).json({ 
@@ -966,8 +995,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Membership is active, create check-in
-      const checkInData = await storage.validateMemberQrAndCheckIn(qrCode);
+      // Membership is active, create check-in using permanent QR code or user ID
+      let checkInData;
+      if (memberUser.permanentQrCode) {
+        checkInData = await storage.validateMemberQrAndCheckIn(memberUser.permanentQrCode);
+      } else {
+        // If user doesn't have permanent QR code, create one and use it for check-in
+        const permanentQr = await storage.ensureUserPermanentQrCode(memberUser.id);
+        checkInData = await storage.validateMemberQrAndCheckIn(permanentQr);
+      }
       
       if (!checkInData) {
         return res.status(500).json({ 
