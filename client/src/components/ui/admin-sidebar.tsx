@@ -9,7 +9,9 @@ import {
   QrCode, 
   MessageSquare,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Calendar,
+  CalendarCheck
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -28,6 +30,8 @@ export default function AdminSidebar({ className }: AdminSidebarProps) {
     { href: "/admin/classes", icon: Dumbbell, label: "Classes" },
     { href: "/admin/trainers", icon: UserCog, label: "Trainers" },
     { href: "/admin/plans", icon: CreditCard, label: "Membership Plans" },
+    { href: "/admin/pt-bookings", icon: Calendar, label: "PT Bookings" },
+    { href: "/admin/class-bookings", icon: CalendarCheck, label: "Class Bookings" },
     { href: "/admin/checkins", icon: QrCode, label: "Check-ins" },
     { href: "/admin/feedback", icon: MessageSquare, label: "Feedback" },
   ];

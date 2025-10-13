@@ -16,6 +16,8 @@ import AdminTrainers from "@/pages/admin-trainers";
 import AdminPlans from "@/pages/admin-plans";
 import AdminCheckIns from "@/pages/admin-checkins";
 import AdminFeedback from "@/pages/admin-feedback";
+import AdminPTBookings from "@/pages/admin-pt-bookings";
+import AdminClassBookings from "@/pages/admin-class-bookings";
 import Checkout from "@/pages/checkout";
 import MyBookings from "@/pages/my-bookings";
 import CheckInVerify from "@/pages/checkin-verify";
@@ -57,6 +59,8 @@ function Router() {
           <Route path="/admin/plans" component={AdminPlans} />
           <Route path="/admin/checkins" component={AdminCheckIns} />
           <Route path="/admin/feedback" component={AdminFeedback} />
+          <Route path="/admin/pt-bookings" component={AdminPTBookings} />
+          <Route path="/admin/class-bookings" component={AdminClassBookings} />
           <Route path="/checkout" component={Checkout} />
           <Route path="/my-bookings" component={MyBookings} />
           <Route path="/login">
