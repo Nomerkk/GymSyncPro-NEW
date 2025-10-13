@@ -9,7 +9,13 @@ import LoginAdmin from "@/pages/login-admin";
 import Register from "@/pages/register";
 import RegisterAdmin from "@/pages/register-admin";
 import MemberDashboard from "@/pages/member-dashboard";
-import AdminDashboard from "@/pages/admin-dashboard";
+import AdminOverview from "@/pages/admin-overview";
+import AdminMembers from "@/pages/admin-members";
+import AdminClasses from "@/pages/admin-classes";
+import AdminTrainers from "@/pages/admin-trainers";
+import AdminPlans from "@/pages/admin-plans";
+import AdminCheckIns from "@/pages/admin-checkins";
+import AdminFeedback from "@/pages/admin-feedback";
 import Checkout from "@/pages/checkout";
 import MyBookings from "@/pages/my-bookings";
 import NotFound from "@/pages/not-found";
@@ -39,8 +45,14 @@ function Router() {
         </>
       ) : (
         <>
-          <Route path="/" component={user?.role === 'admin' ? AdminDashboard : MemberDashboard} />
-          <Route path="/admin" component={AdminDashboard} />
+          <Route path="/" component={user?.role === 'admin' ? AdminOverview : MemberDashboard} />
+          <Route path="/admin" component={AdminOverview} />
+          <Route path="/admin/members" component={AdminMembers} />
+          <Route path="/admin/classes" component={AdminClasses} />
+          <Route path="/admin/trainers" component={AdminTrainers} />
+          <Route path="/admin/plans" component={AdminPlans} />
+          <Route path="/admin/checkins" component={AdminCheckIns} />
+          <Route path="/admin/feedback" component={AdminFeedback} />
           <Route path="/checkout" component={Checkout} />
           <Route path="/my-bookings" component={MyBookings} />
           <Route path="/login">
