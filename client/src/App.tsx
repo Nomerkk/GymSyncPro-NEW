@@ -9,6 +9,8 @@ import Login from "@/pages/login";
 import LoginAdmin from "@/pages/login-admin";
 import Register from "@/pages/register";
 import RegisterAdmin from "@/pages/register-admin";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 import MemberDashboard from "@/pages/member-dashboard";
 import AdminOverview from "@/pages/admin-overview";
 import AdminMembers from "@/pages/admin-members";
@@ -41,6 +43,8 @@ function Router() {
       {/* Public routes */}
       <Route path="/checkin/verify/:code" component={CheckInVerify} />
       <Route path="/cookie-settings" component={CookieSettings} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       
       {!isAuthenticated ? (
         <>

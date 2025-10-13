@@ -25,13 +25,10 @@ export default function ForgotPasswordPage() {
 
   const forgotPasswordMutation = useMutation({
     mutationFn: async (data: ForgotPasswordRequest) => {
-      return await apiRequest("/api/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      const res = await apiRequest("POST", "/api/forgot-password", data);
+      return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       toast({
         title: "Email Terkirim",
         description: data.message || "Kode verifikasi telah dikirim ke email Anda",
