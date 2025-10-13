@@ -16,6 +16,7 @@ import QRModal from "@/components/qr-modal";
 import PaymentModal from "@/components/payment-modal";
 import FeedbackModal from "@/components/feedback-modal";
 import Navigation from "@/components/ui/navigation";
+import BottomNavigation from "@/components/ui/bottom-navigation";
 import {
   CalendarCheck,
   IdCard,
@@ -222,20 +223,20 @@ export default function MemberDashboard() {
   const crowdInfo = getCrowdLevel(crowdCount);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-muted/30 via-background to-muted/20">
+    <div className="min-h-screen bg-gradient-to-br from-muted/30 via-background to-muted/20 pb-20 md:pb-0">
       <Navigation user={user} notificationCount={isExpiringSoon ? 1 : 0} />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Welcome Section - More Compact */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col gap-3 sm:gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground">
                 Hi, {user.firstName || "Member"}! 👋
               </h1>
-              <p className="text-sm text-muted-foreground mt-1">Ready for your workout today?</p>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Ready for your workout today?</p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:gap-3">
               <Button
                 onClick={() => generateQRMutation.mutate()}
                 disabled={generateQRMutation.isPending}
@@ -244,7 +245,8 @@ export default function MemberDashboard() {
                 data-testid="button-generate-qr"
               >
                 <QrCode className="mr-2 h-4 w-4" />
-                {generateQRMutation.isPending ? "Generating..." : "Check-in QR"}
+                <span className="hidden sm:inline">{generateQRMutation.isPending ? "Generating..." : "Check-in QR"}</span>
+                <span className="sm:hidden">{generateQRMutation.isPending ? "Generating..." : "Check-in"}</span>
               </Button>
               <Button
                 onClick={() => setShowFeedbackModal(true)}
@@ -285,86 +287,86 @@ export default function MemberDashboard() {
         )}
 
         {/* Quick Stats - Improved Design */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-6 sm:mb-8">
           <Card className="border-none shadow-sm bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/40 dark:to-emerald-950/40">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
-                  <CalendarCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
+                  <CalendarCheck className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400" />
                 </div>
-                <TrendingUp className="h-4 w-4 text-green-500" />
+                <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-green-500 hidden sm:block" />
               </div>
-              <p className="text-2xl font-bold text-foreground" data-testid="text-monthly-checkins">
+              <p className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-monthly-checkins">
                 {stats.monthlyCheckIns || 0}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Check-ins this month</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">Check-ins this month</p>
             </CardContent>
           </Card>
 
           <Card className="border-none shadow-sm bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-                  <IdCard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+                  <IdCard className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
                 </div>
-                <Activity className="h-4 w-4 text-blue-500" />
+                <Activity className="h-3 w-3 sm:h-4 sm:w-4 text-blue-500 hidden sm:block" />
               </div>
-              <p className="text-2xl font-bold text-foreground" data-testid="text-days-remaining">
+              <p className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-days-remaining">
                 {getDaysUntilExpiry()}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Days remaining</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">Days remaining</p>
             </CardContent>
           </Card>
 
           <Card className="border-none shadow-sm bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/40 dark:to-violet-950/40">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
-                  <Dumbbell className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
+                  <Dumbbell className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
                 </div>
-                <Users className="h-4 w-4 text-purple-500" />
+                <Users className="h-3 w-3 sm:h-4 sm:w-4 text-purple-500 hidden sm:block" />
               </div>
-              <p className="text-2xl font-bold text-foreground" data-testid="text-upcoming-classes">
+              <p className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-upcoming-classes">
                 {stats.upcomingClasses || 0}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Classes booked</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">Classes booked</p>
             </CardContent>
           </Card>
 
           <Card className="border-none shadow-sm bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/40">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50">
-                  <Users className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50">
+                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
                 </div>
-                <Badge variant={crowdInfo.level === "Low" ? "default" : crowdInfo.level === "Medium" ? "secondary" : "destructive"} className="text-xs">
+                <Badge variant={crowdInfo.level === "Low" ? "default" : crowdInfo.level === "Medium" ? "secondary" : "destructive"} className="text-[10px] sm:text-xs">
                   {crowdInfo.level}
                 </Badge>
               </div>
-              <p className="text-2xl font-bold text-foreground" data-testid="text-crowd-count">
+              <p className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-crowd-count">
                 {crowdCount}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">People now</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">People now</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left Column */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Check-in History - Simplified */}
             <Card className="border-none shadow-sm">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-lg">Recent Check-ins</CardTitle>
-                    <CardDescription className="text-xs">Your latest gym visits</CardDescription>
+                    <CardTitle className="text-base sm:text-lg">Recent Check-ins</CardTitle>
+                    <CardDescription className="text-xs hidden sm:block">Your latest gym visits</CardDescription>
                   </div>
-                  <CalendarCheck className="h-5 w-5 text-muted-foreground" />
+                  <CalendarCheck className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                 </div>
               </CardHeader>
-              <CardContent className="px-0 sm:px-6 pb-6">
+              <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
                 {checkIns.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-3">
@@ -416,16 +418,16 @@ export default function MemberDashboard() {
 
             {/* Gym Classes - Simplified */}
             <Card className="border-none shadow-sm">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-lg">Available Classes</CardTitle>
-                    <CardDescription className="text-xs">Book your next workout</CardDescription>
+                    <CardTitle className="text-base sm:text-lg">Available Classes</CardTitle>
+                    <CardDescription className="text-xs hidden sm:block">Book your next workout</CardDescription>
                   </div>
-                  <Dumbbell className="h-5 w-5 text-muted-foreground" />
+                  <Dumbbell className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-3 sm:px-6">
                 {!classes || classes.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-3">
@@ -484,16 +486,16 @@ export default function MemberDashboard() {
 
             {/* Personal Trainers - Simplified */}
             <Card className="border-none shadow-sm">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-lg">Personal Trainers</CardTitle>
-                    <CardDescription className="text-xs">Expert guidance for your goals</CardDescription>
+                    <CardTitle className="text-base sm:text-lg">Personal Trainers</CardTitle>
+                    <CardDescription className="text-xs hidden sm:block">Expert guidance for your goals</CardDescription>
                   </div>
-                  <UserCog className="h-5 w-5 text-muted-foreground" />
+                  <UserCog className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-3 sm:px-6">
                 {!trainers || trainers.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-3">
@@ -774,6 +776,9 @@ export default function MemberDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Bottom Navigation for Mobile */}
+      <BottomNavigation notificationCount={isExpiringSoon ? 1 : 0} />
     </div>
   );
 }
