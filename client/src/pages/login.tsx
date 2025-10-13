@@ -55,22 +55,29 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950">
-      <div className="container mx-auto min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen w-full bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-100 dark:from-gray-950 dark:via-yellow-950 dark:to-amber-950 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-yellow-300/20 dark:bg-yellow-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-amber-400/20 dark:bg-amber-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-yellow-200/10 dark:bg-yellow-600/5 rounded-full blur-3xl"></div>
+      </div>
+
+      <div className="container mx-auto min-h-screen flex items-center justify-center p-4 relative z-10">
         <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-8 items-center">
           {/* Left Side - Branding */}
           <div className="hidden lg:flex flex-col justify-center space-y-6 p-8">
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl blur-2xl opacity-40 animate-pulse"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-2xl blur-2xl opacity-60 animate-pulse"></div>
                   <img 
                     src={idachiLogo} 
                     alt="Idachi Fitness Logo" 
-                    className="relative h-16 w-16 object-contain rounded-xl"
+                    className="relative h-20 w-20 object-contain rounded-xl"
                   />
                 </div>
-                <h1 className="text-4xl font-bold text-yellow-400">
+                <h1 className="text-5xl font-bold text-yellow-500 dark:text-yellow-400">
                   Idachi Fitness
                 </h1>
               </div>
@@ -79,15 +86,15 @@ export default function Login() {
                 Wujudkan Tubuh Impian Anda
               </h2>
               
-              <p className="text-lg text-gray-600 dark:text-gray-400">
+              <p className="text-lg text-gray-700 dark:text-gray-300">
                 Bergabunglah dengan ribuan member yang telah mencapai target fitness mereka bersama kami.
               </p>
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm border border-gray-200 dark:border-gray-700">
-                <div className="p-2 rounded-lg bg-indigo-500/10">
-                  <Dumbbell className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm border border-yellow-200 dark:border-yellow-800/50 shadow-lg">
+                <div className="p-2 rounded-lg bg-yellow-400/20 dark:bg-yellow-500/20">
+                  <Dumbbell className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 dark:text-white">Akses Unlimited</h3>
@@ -95,9 +102,9 @@ export default function Login() {
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm border border-gray-200 dark:border-gray-700">
-                <div className="p-2 rounded-lg bg-purple-500/10">
-                  <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm border border-amber-200 dark:border-amber-800/50 shadow-lg">
+                <div className="p-2 rounded-lg bg-amber-400/20 dark:bg-amber-500/20">
+                  <Sparkles className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 dark:text-white">Personal Trainer</h3>
@@ -109,7 +116,7 @@ export default function Login() {
 
           {/* Right Side - Login Form */}
           <div className="w-full">
-            <Card className="border-2 shadow-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl">
+            <Card className="border-2 border-yellow-200 dark:border-yellow-800/50 shadow-2xl bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl">
               <CardHeader className="space-y-2 pb-6">
                 <div className="lg:hidden flex justify-center mb-4">
                   <img 
@@ -141,7 +148,7 @@ export default function Login() {
                               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                               <Input
                                 placeholder="Masukkan username"
-                                className="pl-10 h-12 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400"
+                                className="pl-10 h-12 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
                                 data-testid="input-username"
                                 {...field}
                               />
@@ -164,7 +171,7 @@ export default function Login() {
                               <Input
                                 type={showPassword ? "text" : "password"}
                                 placeholder="Masukkan password"
-                                className="pl-10 pr-10 h-12 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400"
+                                className="pl-10 pr-10 h-12 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
                                 data-testid="input-password"
                                 {...field}
                               />
@@ -189,7 +196,7 @@ export default function Login() {
 
                     <Button
                       type="submit"
-                      className="w-full h-12 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold text-base shadow-lg shadow-indigo-500/30 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/40"
+                      className="w-full h-12 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold text-base shadow-lg shadow-yellow-500/30 transition-all duration-300 hover:shadow-xl hover:shadow-yellow-500/40"
                       disabled={loginMutation.isPending}
                       data-testid="button-login"
                     >
@@ -223,20 +230,10 @@ export default function Login() {
                   <Link href="/register" data-testid="link-register">
                     <Button 
                       variant="outline" 
-                      className="w-full h-12 border-2 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950 font-semibold"
+                      className="w-full h-12 border-2 border-yellow-300 dark:border-yellow-700 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-950 font-semibold"
                     >
                       Daftar Sekarang
                     </Button>
-                  </Link>
-                </div>
-
-                <div className="text-center">
-                  <Link 
-                    href="/login-admin" 
-                    data-testid="link-admin-login"
-                    className="text-sm text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                  >
-                    Login sebagai Admin →
                   </Link>
                 </div>
               </CardContent>
