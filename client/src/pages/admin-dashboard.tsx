@@ -14,9 +14,10 @@ import AdminPTDialog from "@/components/admin-pt-dialog";
 import AdminClassDialog from "@/components/admin-class-dialog";
 import AdminMemberDialog from "@/components/admin-member-dialog";
 import AdminEditMemberDialog from "@/components/admin-edit-member-dialog";
+import AdminMembershipPlanDialog from "@/components/admin-membership-plan-dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import type { PersonalTrainer, GymClass } from "@shared/schema";
+import type { PersonalTrainer, GymClass, MembershipPlan } from "@shared/schema";
 import {
   Users,
   CalendarCheck,
@@ -112,6 +113,8 @@ export default function AdminDashboard() {
   const [showMemberDialog, setShowMemberDialog] = useState(false);
   const [showEditMemberDialog, setShowEditMemberDialog] = useState(false);
   const [selectedMember, setSelectedMember] = useState<MemberWithMembership | null>(null);
+  const [showMembershipPlanDialog, setShowMembershipPlanDialog] = useState(false);
+  const [selectedMembershipPlan, setSelectedMembershipPlan] = useState<MembershipPlan | null>(null);
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -173,6 +176,12 @@ export default function AdminDashboard() {
 
   const { data: ptBookings } = useQuery<any[]>({
     queryKey: ["/api/admin/pt-bookings"],
+    enabled: isAuthenticated && user?.role === 'admin',
+    retry: false,
+  });
+
+  const { data: membershipPlans } = useQuery<MembershipPlan[]>({
+    queryKey: ["/api/admin/membership-plans"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
   });
@@ -322,6 +331,38 @@ export default function AdminDashboard() {
       toast({
         title: "Error",
         description: error.message || "Gagal menghapus member",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddMembershipPlan = () => {
+    setSelectedMembershipPlan(null);
+    setShowMembershipPlanDialog(true);
+  };
+
+  const handleEditMembershipPlan = (plan: MembershipPlan) => {
+    setSelectedMembershipPlan(plan);
+    setShowMembershipPlanDialog(true);
+  };
+
+  const handleDeleteMembershipPlan = async (planId: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus paket membership ini?")) {
+      return;
+    }
+
+    try {
+      await apiRequest("DELETE", `/api/admin/membership-plans/${planId}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/membership-plans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/membership-plans"] });
+      toast({
+        title: "Berhasil!",
+        description: "Paket membership berhasil dihapus",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Gagal menghapus paket membership",
         variant: "destructive",
       });
     }
@@ -703,6 +744,124 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </div>
+        </div>
+
+        {/* Membership Plans Management Section */}
+        <div className="mt-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarCheck className="text-primary" size={20} />
+                    Paket Membership
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Kelola paket membership dan masa aktif</p>
+                </div>
+                <Button 
+                  onClick={handleAddMembershipPlan}
+                  className="gym-gradient text-white"
+                  data-testid="button-add-plan"
+                >
+                  <UserPlus className="mr-2" size={16} />
+                  Tambah Paket
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              {!membershipPlans || membershipPlans.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <CalendarCheck className="mx-auto mb-3" size={48} />
+                  <p className="text-lg font-medium">Belum Ada Paket Membership</p>
+                  <p className="text-sm mt-1">Tambahkan paket membership pertama Anda</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {membershipPlans.map((plan: MembershipPlan) => (
+                    <div 
+                      key={plan.id} 
+                      className="border border-border rounded-lg p-5 hover:shadow-md transition-shadow"
+                      data-testid={`card-plan-${plan.id}`}
+                    >
+                      <div className="mb-4">
+                        <h4 className="font-bold text-foreground text-xl">{plan.name}</h4>
+                        {plan.description && (
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                            {plan.description}
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-3 mb-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Harga</span>
+                          <span className="text-lg font-bold text-foreground" data-testid={`text-price-${plan.id}`}>
+                            Rp {Number(plan.price).toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Masa Aktif</span>
+                          <span className="font-medium text-foreground">
+                            {plan.durationMonths} {plan.durationMonths === 1 ? 'bulan' : 'bulan'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const features = plan.features as string[] | null;
+                        if (features && Array.isArray(features) && features.length > 0) {
+                          return (
+                            <div className="mb-4">
+                              <p className="text-sm font-medium text-muted-foreground mb-2">Fitur:</p>
+                              <ul className="space-y-1">
+                                {features.slice(0, 3).map((feature: string, index: number) => (
+                                  <li key={index} className="text-xs text-muted-foreground flex items-center gap-2">
+                                    <span className="w-1 h-1 rounded-full bg-primary"></span>
+                                    {feature}
+                                  </li>
+                                ))}
+                              </ul>
+                              {features.length > 3 && (
+                                <p className="text-xs text-muted-foreground mt-1">+{features.length - 3} lainnya</p>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      <div className="flex items-center justify-between pt-3 border-t border-border">
+                        <Badge 
+                          variant={plan.active ? "default" : "secondary"}
+                        >
+                          {plan.active ? "Aktif" : "Tidak Aktif"}
+                        </Badge>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditMembershipPlan(plan)}
+                            data-testid={`button-edit-plan-${plan.id}`}
+                          >
+                            <Edit size={16} />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteMembershipPlan(plan.id)}
+                            data-testid={`button-delete-plan-${plan.id}`}
+                          >
+                            <Trash2 size={16} className="text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Personal Trainers Management Section */}
@@ -1232,6 +1391,13 @@ export default function AdminDashboard() {
         open={showEditMemberDialog}
         onOpenChange={setShowEditMemberDialog}
         member={selectedMember}
+      />
+
+      {/* Membership Plan Dialog */}
+      <AdminMembershipPlanDialog
+        open={showMembershipPlanDialog}
+        onOpenChange={setShowMembershipPlanDialog}
+        plan={selectedMembershipPlan}
       />
     </div>
   );
