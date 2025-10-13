@@ -1,8 +1,8 @@
-# FitZone Gym Management System
+# Idachi Fitness Gym Management System
 
 ## Overview
 
-FitZone is a comprehensive gym management platform designed to streamline gym operations and enhance member experience. The system provides dual interfaces - a member portal for workout tracking, class bookings, and membership management, and an administrative dashboard for gym operations, member management, and business analytics. The platform supports modern payment processing, QR-based check-ins, class scheduling, and membership lifecycle management.
+Idachi Fitness is a comprehensive gym management platform designed to streamline gym operations and enhance member experience. The system provides dual interfaces - a member portal for workout tracking, class bookings, and membership management, and an administrative dashboard for gym operations, member management, and business analytics. The platform supports modern payment processing, QR-based check-ins, class scheduling, and membership lifecycle management.
 
 ## User Preferences
 

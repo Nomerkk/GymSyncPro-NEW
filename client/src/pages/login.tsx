@@ -66,12 +66,12 @@ export default function Login() {
                   <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl blur-2xl opacity-40 animate-pulse"></div>
                   <img 
                     src={idachiLogo} 
-                    alt="FitZone Logo" 
+                    alt="Idachi Fitness Logo" 
                     className="relative h-16 w-16 object-contain rounded-xl"
                   />
                 </div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
-                  FitZone
+                <h1 className="text-4xl font-bold text-yellow-400">
+                  Idachi Fitness
                 </h1>
               </div>
               
@@ -114,7 +114,7 @@ export default function Login() {
                 <div className="lg:hidden flex justify-center mb-4">
                   <img 
                     src={idachiLogo} 
-                    alt="FitZone Logo" 
+                    alt="Idachi Fitness Logo" 
                     className="h-16 w-16 object-contain rounded-xl"
                     data-testid="img-logo"
                   />

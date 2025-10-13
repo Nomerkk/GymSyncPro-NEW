@@ -1638,7 +1638,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         parameter.payment_type = 'echannel';
         parameter.echannel = {
           bill_info1: `Membership ${plan.name}`,
-          bill_info2: `Gym FitZone`
+          bill_info2: `Gym Idachi Fitness`
         };
       } else {
         parameter.payment_type = 'bank_transfer';

@@ -46,8 +46,8 @@ export default function Navigation({ user, isAdmin = false, notificationCount = 
               />
             )}
             <div>
-              <h1 className="text-base sm:text-xl font-bold text-foreground">
-                {isAdmin ? "FitZone Admin" : "Idachi Connect"}
+              <h1 className="text-base sm:text-xl font-bold text-yellow-500 dark:text-yellow-400">
+                {isAdmin ? "Idachi Fitness Admin" : "Idachi Fitness Connect"}
               </h1>
               {isAdmin && (
                 <p className="text-xs text-muted-foreground hidden sm:block">

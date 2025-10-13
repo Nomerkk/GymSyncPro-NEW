@@ -60,7 +60,7 @@ export default function Register() {
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
         title: "Registrasi berhasil",
-        description: "Selamat datang di FitZone!",
+        description: "Selamat datang di Idachi Fitness!",
       });
       setLocation("/");
     },
@@ -88,8 +88,8 @@ export default function Register() {
                   <UserPlus className="h-10 w-10 text-white" />
                 </div>
               </div>
-              <CardTitle className="text-3xl font-bold text-center text-gray-900 dark:text-white">
-                Bergabung dengan FitZone
+              <CardTitle className="text-3xl font-bold text-center text-yellow-500 dark:text-yellow-400">
+                Bergabung dengan Idachi Fitness
               </CardTitle>
               <CardDescription className="text-center text-base">
                 Mulai perjalanan fitness Anda hari ini
