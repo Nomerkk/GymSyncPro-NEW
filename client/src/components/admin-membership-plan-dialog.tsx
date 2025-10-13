@@ -126,8 +126,8 @@ export default function AdminMembershipPlanDialog({ open, onOpenChange, plan }: 
     const planData = {
       name: data.name,
       description: data.description || null,
-      price: data.price,
-      durationMonths: data.durationMonths,
+      price: Number(data.price),
+      durationMonths: Number(data.durationMonths),
       features: features.length > 0 ? features : null,
       active: data.active,
     };
