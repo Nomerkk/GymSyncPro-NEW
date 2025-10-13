@@ -79,7 +79,7 @@ export default function AdminPTDialog({ open, onOpenChange, trainer }: AdminPTDi
         experience: data.experience ? parseInt(data.experience) : undefined,
         pricePerSession: parseFloat(data.pricePerSession),
       };
-      return await apiRequest("/api/admin/trainers", "POST", payload);
+      return await apiRequest("POST", "/api/admin/trainers", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/trainers"] });
@@ -107,7 +107,7 @@ export default function AdminPTDialog({ open, onOpenChange, trainer }: AdminPTDi
         experience: data.experience ? parseInt(data.experience) : undefined,
         pricePerSession: parseFloat(data.pricePerSession),
       };
-      return await apiRequest(`/api/admin/trainers/${trainer?.id}`, "PUT", payload);
+      return await apiRequest("PUT", `/api/admin/trainers/${trainer?.id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/trainers"] });

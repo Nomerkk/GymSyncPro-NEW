@@ -72,7 +72,7 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
         currentEnrollment: 0,
         active: true,
       };
-      return await apiRequest("/api/admin/classes", "POST", payload);
+      return await apiRequest("POST", "/api/admin/classes", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/classes"] });
@@ -99,7 +99,7 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
         ...data,
         maxCapacity: parseInt(data.maxCapacity),
       };
-      return await apiRequest(`/api/admin/classes/${gymClass?.id}`, "PUT", payload);
+      return await apiRequest("PUT", `/api/admin/classes/${gymClass?.id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/classes"] });
