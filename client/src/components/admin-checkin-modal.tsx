@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -13,8 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { QrCode, User, Calendar, CreditCard, Clock, CheckCircle2 } from "lucide-react";
+import { QrCode, User, Calendar, CreditCard, Clock, CheckCircle2, Camera, Keyboard } from "lucide-react";
 import { format } from "date-fns";
+import { Html5Qrcode } from "html5-qrcode";
 
 interface AdminCheckInModalProps {
   open: boolean;
@@ -26,6 +27,10 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
   const { toast } = useToast();
   const [qrCode, setQrCode] = useState("");
   const [memberData, setMemberData] = useState<any>(null);
+  const [scanMode, setScanMode] = useState<"manual" | "camera">("camera");
+  const [isScanning, setIsScanning] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerDivId = "qr-reader";
 
   const validateMutation = useMutation({
     mutationFn: async (code: string) => {
@@ -38,6 +43,8 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
         title: "Check-in Valid",
         description: `Member ${data.user.firstName} ${data.user.lastName} berhasil divalidasi`,
       });
+      // Stop scanner after successful scan
+      stopScanner();
       if (onSuccess) {
         onSuccess();
       }
@@ -64,11 +71,97 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
     validateMutation.mutate(qrCode);
   };
 
-  const handleClose = () => {
+  const startScanner = async () => {
+    try {
+      setIsScanning(true);
+      
+      if (!scannerRef.current) {
+        scannerRef.current = new Html5Qrcode(scannerDivId);
+      }
+
+      const config = { 
+        fps: 10, 
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0
+      };
+
+      await scannerRef.current.start(
+        { facingMode: "environment" }, // Use back camera
+        config,
+        (decodedText) => {
+          // QR code successfully scanned
+          setQrCode(decodedText);
+          validateMutation.mutate(decodedText);
+        },
+        (errorMessage) => {
+          // Scan error (usually just means no QR code in view, so we ignore it)
+        }
+      );
+    } catch (err: any) {
+      console.error("Error starting scanner:", err);
+      toast({
+        title: "Error",
+        description: "Tidak dapat mengakses kamera. Pastikan izin kamera sudah diberikan.",
+        variant: "destructive",
+      });
+      setIsScanning(false);
+      setScanMode("manual");
+    }
+  };
+
+  const stopScanner = async () => {
+    try {
+      if (scannerRef.current) {
+        const state = await scannerRef.current.getState();
+        // Only stop if scanner is actually scanning
+        if (state === 2) { // 2 = Html5QrcodeScannerState.SCANNING
+          await scannerRef.current.stop();
+        }
+        await scannerRef.current.clear();
+        setIsScanning(false);
+      }
+    } catch (err) {
+      console.error("Error stopping scanner:", err);
+      setIsScanning(false);
+    }
+  };
+
+  const handleClose = async () => {
+    await stopScanner();
     setQrCode("");
     setMemberData(null);
+    setScanMode("camera");
     onClose();
   };
+
+  const toggleScanMode = async () => {
+    if (scanMode === "camera") {
+      await stopScanner();
+      setScanMode("manual");
+    } else {
+      setScanMode("camera");
+    }
+  };
+
+  // Start camera when scan mode is camera
+  useEffect(() => {
+    if (open && scanMode === "camera" && !isScanning && !memberData) {
+      startScanner();
+    }
+    
+    return () => {
+      if (scannerRef.current) {
+        stopScanner();
+      }
+    };
+  }, [open, scanMode, memberData]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopScanner();
+    };
+  }, []);
 
   const getMembershipStatus = (endDate: Date) => {
     const now = new Date();
@@ -94,30 +187,77 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* QR Code Input */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">QR Code</label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Masukkan atau scan QR code"
-                value={qrCode}
-                onChange={(e) => setQrCode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleValidate();
-                  }
-                }}
-                data-testid="input-qr-code"
-              />
-              <Button 
-                onClick={handleValidate}
-                disabled={validateMutation.isPending}
-                data-testid="button-validate-qr"
-              >
-                {validateMutation.isPending ? "Validating..." : "Validasi"}
-              </Button>
-            </div>
+          {/* Scan Mode Toggle */}
+          <div className="flex gap-2">
+            <Button
+              variant={scanMode === "camera" ? "default" : "outline"}
+              onClick={() => {
+                if (scanMode !== "camera") toggleScanMode();
+              }}
+              className="flex-1"
+              data-testid="button-camera-mode"
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              Scan Kamera
+            </Button>
+            <Button
+              variant={scanMode === "manual" ? "default" : "outline"}
+              onClick={() => {
+                if (scanMode !== "manual") toggleScanMode();
+              }}
+              className="flex-1"
+              data-testid="button-manual-mode"
+            >
+              <Keyboard className="w-4 h-4 mr-2" />
+              Input Manual
+            </Button>
           </div>
+
+          {/* Camera Scanner */}
+          {scanMode === "camera" && !memberData && (
+            <div className="space-y-2">
+              <div className="text-sm text-center text-muted-foreground mb-2">
+                Arahkan kamera ke QR code member
+              </div>
+              <div 
+                id={scannerDivId} 
+                className="w-full border-2 border-dashed border-primary rounded-lg overflow-hidden"
+                data-testid="div-qr-scanner"
+              />
+              {isScanning && (
+                <p className="text-xs text-center text-muted-foreground">
+                  Scanner aktif - mencari QR code...
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Manual Input */}
+          {scanMode === "manual" && !memberData && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">QR Code</label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Masukkan QR code"
+                  value={qrCode}
+                  onChange={(e) => setQrCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleValidate();
+                    }
+                  }}
+                  data-testid="input-qr-code"
+                />
+                <Button 
+                  onClick={handleValidate}
+                  disabled={validateMutation.isPending}
+                  data-testid="button-validate-qr"
+                >
+                  {validateMutation.isPending ? "Validating..." : "Validasi"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Member Information */}
           {memberData && (
