@@ -159,6 +159,17 @@ export const ptBookings = pgTable("pt_bookings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// One-time QR codes for check-in
+export const oneTimeQrCodes = pgTable("one_time_qr_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  qrCode: varchar("qr_code").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  status: varchar("status").default("valid"), // valid, used, expired
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
@@ -167,6 +178,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   payments: many(payments),
   feedbacks: many(feedbacks),
   ptBookings: many(ptBookings),
+  oneTimeQrCodes: many(oneTimeQrCodes),
 }));
 
 export const membershipPlansRelations = relations(membershipPlans, ({ many }) => ({
@@ -237,6 +249,13 @@ export const ptBookingsRelations = relations(ptBookings, ({ one }) => ({
   trainer: one(personalTrainers, {
     fields: [ptBookings.trainerId],
     references: [personalTrainers.id],
+  }),
+}));
+
+export const oneTimeQrCodesRelations = relations(oneTimeQrCodes, ({ one }) => ({
+  user: one(users, {
+    fields: [oneTimeQrCodes.userId],
+    references: [users.id],
   }),
 }));
 
@@ -316,6 +335,11 @@ export const insertPtBookingSchema = createInsertSchema(ptBookings).omit({
   updatedAt: true,
 });
 
+export const insertOneTimeQrCodeSchema = createInsertSchema(oneTimeQrCodes).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type UpsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -339,3 +363,5 @@ export type PersonalTrainer = typeof personalTrainers.$inferSelect;
 export type InsertPersonalTrainer = z.infer<typeof insertPersonalTrainerSchema>;
 export type PtBooking = typeof ptBookings.$inferSelect;
 export type InsertPtBooking = z.infer<typeof insertPtBookingSchema>;
+export type OneTimeQrCode = typeof oneTimeQrCodes.$inferSelect;
+export type InsertOneTimeQrCode = z.infer<typeof insertOneTimeQrCodeSchema>;
