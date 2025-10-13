@@ -649,7 +649,7 @@ export default function AdminDashboard() {
                                 >
                                   <Edit size={16} />
                                 </Button>
-                                {(member.active ?? true) ? (
+                                {member.active !== false ? (
                                   <Button
                                     variant="outline"
                                     size="sm"
