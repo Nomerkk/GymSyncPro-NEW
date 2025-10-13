@@ -268,6 +268,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check QR code status (for polling)
+  app.get('/api/checkin/status/:qrCode', async (req, res) => {
+    try {
+      const { qrCode } = req.params;
+      
+      if (!qrCode) {
+        return res.status(400).json({ success: false, message: 'QR code is required' });
+      }
+
+      // Check one-time QR code status
+      const qrData = await storage.validateOneTimeQrCode(qrCode);
+      
+      if (!qrData) {
+        return res.json({ success: false, status: 'invalid', message: 'QR code tidak ditemukan' });
+      }
+
+      // If QR code is used, find the check-in record
+      if (qrData.status === 'used') {
+        // Find the most recent check-in for this user
+        const checkIns = await storage.getUserCheckIns(qrData.userId);
+        const latestCheckIn = checkIns && checkIns.length > 0 ? checkIns[0] : null;
+        
+        return res.json({
+          success: true,
+          status: 'used',
+          checkIn: latestCheckIn,
+          user: {
+            firstName: qrData.user.firstName,
+            lastName: qrData.user.lastName
+          }
+        });
+      }
+
+      // QR code is still valid
+      return res.json({
+        success: true,
+        status: qrData.status,
+        expiresAt: qrData.expiresAt
+      });
+    } catch (error) {
+      console.error("Error checking QR code status:", error);
+      res.status(500).json({ success: false, message: "Failed to check QR code status" });
+    }
+  });
+
   // Public check-in verification endpoint (no auth required) - One-time QR
   app.post('/api/checkin/verify', async (req, res) => {
     try {
