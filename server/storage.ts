@@ -1171,6 +1171,19 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     if (result.length === 0) {
+      // Check if QR code exists and what its status is
+      const existingQr = await db
+        .select()
+        .from(oneTimeQrCodes)
+        .where(eq(oneTimeQrCodes.qrCode, qrCode))
+        .limit(1);
+      
+      if (existingQr.length > 0) {
+        console.error(`QR code ${qrCode} has status: ${existingQr[0].status}`);
+      } else {
+        console.error(`QR code ${qrCode} not found in database`);
+      }
+      
       throw new Error('QR code already used or invalid');
     }
   }

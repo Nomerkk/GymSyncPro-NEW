@@ -986,15 +986,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'QR code is required' });
       }
 
+      console.log(`[Admin Check-in] Validating QR code: ${qrCode}`);
+
       // Try to find user by permanent QR code first
       let memberUser = await storage.getUserByPermanentQrCode(qrCode);
       let isOneTimeQr = false;
       
       // If not found by permanent QR code, try to find by one-time QR code
       if (!memberUser) {
+        console.log(`[Admin Check-in] Not a permanent QR, checking one-time QR...`);
         const oneTimeQr = await storage.validateOneTimeQrCode(qrCode);
         
         if (oneTimeQr) {
+          console.log(`[Admin Check-in] Found one-time QR with status: ${oneTimeQr.status}`);
           // Check if QR code is still valid
           const now = new Date();
           if (oneTimeQr.status === 'used') {
@@ -1014,6 +1018,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get user from one-time QR code
           memberUser = await storage.getUser(oneTimeQr.userId);
           isOneTimeQr = true;
+          console.log(`[Admin Check-in] Valid one-time QR for user: ${memberUser?.firstName} ${memberUser?.lastName}`);
+        } else {
+          console.log(`[Admin Check-in] One-time QR not found`);
         }
       }
       
@@ -1058,9 +1065,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Mark one-time QR code as used ONLY after successful check-in
       if (isOneTimeQr) {
-        await storage.markQrCodeAsUsed(qrCode);
+        try {
+          console.log(`[Admin Check-in] Marking one-time QR code as used: ${qrCode}`);
+          await storage.markQrCodeAsUsed(qrCode);
+          console.log(`[Admin Check-in] Successfully marked QR code as used`);
+        } catch (error) {
+          // Log the error but don't fail the request since check-in was successful
+          console.error("[Admin Check-in] Warning: Could not mark QR code as used:", error);
+        }
       }
 
+      console.log(`[Admin Check-in] Check-in successful for user: ${checkInData.user?.firstName} ${checkInData.user?.lastName}`);
       res.json({
         success: true,
         ...checkInData
