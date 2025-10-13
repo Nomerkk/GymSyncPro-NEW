@@ -275,7 +275,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async cancelClassBooking(id: string): Promise<void> {
+    const [booking] = await db.select().from(classBookings).where(eq(classBookings.id, id));
+    
+    if (!booking || booking.status === 'cancelled') {
+      return;
+    }
+
     await db.update(classBookings).set({ status: "cancelled" }).where(eq(classBookings.id, id));
+    
+    const currentBookings = await db
+      .select({ count: count() })
+      .from(classBookings)
+      .where(and(eq(classBookings.classId, booking.classId), eq(classBookings.status, "booked")));
+    
+    await db
+      .update(gymClasses)
+      .set({ currentEnrollment: currentBookings[0]?.count || 0 })
+      .where(eq(gymClasses.id, booking.classId));
   }
 
   // Check-in operations
