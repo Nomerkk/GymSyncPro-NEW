@@ -834,17 +834,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'QR code is required' });
       }
 
-      // Validate member QR code and create check-in if needed
+      // Find user by QR code
+      const memberUser = await storage.getUserByPermanentQrCode(qrCode);
+      
+      if (!memberUser) {
+        return res.status(404).json({ 
+          success: false,
+          message: 'QR code tidak valid atau member tidak ditemukan' 
+        });
+      }
+
+      // Check membership status
+      const membership = await storage.getUserMembership(memberUser.id);
+      const now = new Date();
+      const hasActiveMembership = membership && new Date(membership.endDate) > now;
+
+      // If no active membership, return failure response with member info
+      if (!hasActiveMembership) {
+        return res.json({
+          success: false,
+          user: memberUser,
+          membership,
+          message: 'Belum terdaftar membership atau membership sudah expired'
+        });
+      }
+
+      // Membership is active, create check-in
       const checkInData = await storage.validateMemberQrAndCheckIn(qrCode);
       
       if (!checkInData) {
-        return res.status(404).json({ message: 'QR code tidak valid atau member tidak ditemukan' });
+        return res.status(500).json({ 
+          success: false,
+          message: 'Gagal membuat check-in' 
+        });
       }
 
-      res.json(checkInData);
+      res.json({
+        success: true,
+        ...checkInData
+      });
     } catch (error) {
       console.error("Error validating check-in:", error);
-      res.status(500).json({ message: "Failed to validate check-in" });
+      res.status(500).json({ 
+        success: false,
+        message: "Failed to validate check-in" 
+      });
     }
   });
 
