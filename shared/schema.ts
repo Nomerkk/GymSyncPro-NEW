@@ -340,6 +340,23 @@ export const insertOneTimeQrCodeSchema = createInsertSchema(oneTimeQrCodes).omit
   createdAt: true,
 });
 
+// Cookie Preferences Schema
+export const cookiePreferencesSchema = z.object({
+  necessary: z.boolean().default(true),
+  analytics: z.boolean().default(false),
+  marketing: z.boolean().default(false),
+  preferences: z.boolean().default(false),
+  consentGiven: z.boolean().default(false),
+  consentDate: z.string().optional(),
+});
+
+export const cookieSettingsSchema = z.object({
+  theme: z.enum(['light', 'dark', 'system']).default('system'),
+  language: z.enum(['id', 'en']).default('id'),
+  sidebarState: z.enum(['expanded', 'collapsed']).default('expanded'),
+  notificationsEnabled: z.boolean().default(true),
+});
+
 // Types
 export type UpsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -365,3 +382,5 @@ export type PtBooking = typeof ptBookings.$inferSelect;
 export type InsertPtBooking = z.infer<typeof insertPtBookingSchema>;
 export type OneTimeQrCode = typeof oneTimeQrCodes.$inferSelect;
 export type InsertOneTimeQrCode = z.infer<typeof insertOneTimeQrCodeSchema>;
+export type CookiePreferences = z.infer<typeof cookiePreferencesSchema>;
+export type CookieSettings = z.infer<typeof cookieSettingsSchema>;

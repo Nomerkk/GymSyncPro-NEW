@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
+import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import Login from "@/pages/login";
 import LoginAdmin from "@/pages/login-admin";
 import Register from "@/pages/register";
@@ -21,6 +22,7 @@ import AdminClassBookings from "@/pages/admin-class-bookings";
 import Checkout from "@/pages/checkout";
 import MyBookings from "@/pages/my-bookings";
 import CheckInVerify from "@/pages/checkin-verify";
+import CookieSettings from "@/pages/cookie-settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -36,8 +38,9 @@ function Router() {
 
   return (
     <Switch>
-      {/* Public route for QR check-in verification */}
+      {/* Public routes */}
       <Route path="/checkin/verify/:code" component={CheckInVerify} />
+      <Route path="/cookie-settings" component={CookieSettings} />
       
       {!isAuthenticated ? (
         <>
@@ -88,6 +91,7 @@ function App() {
       <TooltipProvider>
         <Toaster />
         <Router />
+        <CookieConsentBanner />
       </TooltipProvider>
     </QueryClientProvider>
   );
