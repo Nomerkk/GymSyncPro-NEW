@@ -68,7 +68,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: validatedData.email,
         firstName: validatedData.firstName,
         lastName: validatedData.lastName,
-        phone: validatedData.phone,
+        phone: validatedData.phone ? `+62${validatedData.phone}` : undefined,
         password: hashedPassword,
         role: 'member',
       });
@@ -138,7 +138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: validatedData.email,
         firstName: validatedData.firstName,
         lastName: validatedData.lastName,
-        phone: validatedData.phone || undefined,
+        phone: validatedData.phone ? `+62${validatedData.phone}` : undefined,
         password: hashedPassword,
         role: 'admin', // Set role to admin
       });

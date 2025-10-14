@@ -322,7 +322,7 @@ export const registerSchema = insertUserSchema.omit({
   email: z.string().email("Email tidak valid").refine((email) => email.toLowerCase().endsWith("@gmail.com"), {
     message: "Email harus menggunakan Gmail (@gmail.com)",
   }),
-  phone: z.string().regex(/^\+62[0-9]{9,12}$/, "Nomor telepon harus format Indonesia (+62 diikuti 9-12 digit)"),
+  phone: z.string().regex(/^[0-9]{9,12}$/, "Nomor telepon harus 9-12 digit angka"),
   password: z.string().min(6, "Password minimal 6 karakter"),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {

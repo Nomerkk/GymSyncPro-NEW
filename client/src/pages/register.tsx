@@ -209,10 +209,13 @@ export default function Register() {
                           <FormControl>
                             <div className="relative">
                               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                              <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-400 font-medium">
+                                +62
+                              </div>
                               <Input
                                 type="tel"
-                                placeholder="+62812345678"
-                                className="pl-10 h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
+                                placeholder="812345678"
+                                className="pl-16 h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
                                 data-testid="input-phone"
                                 {...field}
                                 value={field.value || ""}
