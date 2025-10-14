@@ -6,7 +6,7 @@ import passport from "passport";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, isAdmin } from "./auth";
-import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSchema, insertCheckInSchema, insertPaymentSchema, registerSchema, loginSchema, forgotPasswordRequestSchema, resetPasswordSchema } from "@shared/schema";
+import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSchema, insertCheckInSchema, insertPaymentSchema, registerSchema, loginSchema, forgotPasswordRequestSchema, resetPasswordSchema, verifyEmailSchema } from "@shared/schema";
 import { sendPasswordResetEmail } from "./email/resend";
 import { z } from "zod";
 import { randomUUID } from "crypto";
@@ -54,10 +54,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Username sudah digunakan" });
       }
 
+      const existingEmail = await storage.getUserByEmail(validatedData.email);
+      if (existingEmail) {
+        return res.status(400).json({ message: "Email sudah digunakan" });
+      }
+
       // Hash password
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
 
-      // Create user
+      // Create user (not verified yet)
       const user = await storage.createUser({
         username: validatedData.username,
         email: validatedData.email,
@@ -68,12 +73,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: 'member',
       });
 
-      // Log user in
-      req.login(user, (err) => {
-        if (err) {
-          return res.status(500).json({ message: "Failed to login after registration" });
-        }
-        res.json({ message: "Registration successful", user: { ...user, password: undefined } });
+      // Generate 6-digit verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store verification code
+      await storage.storeVerificationCode(user.email, verificationCode);
+      
+      // Send verification email
+      const { sendVerificationEmail } = await import('./email/resend');
+      await sendVerificationEmail(user.email, verificationCode);
+
+      res.json({ 
+        message: "Registrasi berhasil! Silakan cek email Anda untuk kode verifikasi.",
+        email: user.email,
+        requireVerification: true
       });
     } catch (error: any) {
       console.error("Error during registration:", error);
@@ -144,6 +157,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error during admin registration:", error);
       res.status(400).json({ message: error.message || "Admin registration failed" });
+    }
+  });
+
+  // Email verification route
+  app.post('/api/verify-email', async (req, res) => {
+    try {
+      const validatedData = verifyEmailSchema.parse(req.body);
+      
+      const verified = await storage.verifyEmailCode(validatedData.email, validatedData.verificationCode);
+      
+      if (!verified) {
+        return res.status(400).json({ message: "Kode verifikasi tidak valid atau sudah kadaluarsa" });
+      }
+
+      // Get the verified user
+      const user = await storage.getUserByEmail(validatedData.email);
+      if (!user) {
+        return res.status(404).json({ message: "User tidak ditemukan" });
+      }
+
+      // Log user in after verification
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Failed to login after verification" });
+        }
+        res.json({ 
+          message: "Email berhasil diverifikasi! Selamat datang di Idachi Fitness!",
+          user: { ...user, password: undefined }
+        });
+      });
+    } catch (error: any) {
+      console.error("Error during email verification:", error);
+      res.status(400).json({ message: error.message || "Verifikasi email gagal" });
     }
   });
 

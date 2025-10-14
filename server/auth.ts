@@ -61,6 +61,11 @@ export async function setupAuth(app: Express) {
           return done(null, false, { message: "Email/Nomor Telepon/Username atau password salah" });
         }
 
+        // Check if email is verified (skip for admin users)
+        if (user.role !== 'admin' && !user.emailVerified) {
+          return done(null, false, { message: "Email belum diverifikasi. Silakan cek email Anda untuk kode verifikasi" });
+        }
+
         return done(null, user);
       } catch (error) {
         return done(error);

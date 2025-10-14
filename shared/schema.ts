@@ -39,6 +39,9 @@ export const users = pgTable("users", {
   permanentQrCode: varchar("permanent_qr_code"),
   role: varchar("role").default("member"), // member, admin
   active: boolean("active").default(true), // true = active, false = suspended
+  emailVerified: boolean("email_verified").default(false),
+  verificationCode: varchar("verification_code"),
+  verificationCodeExpiry: timestamp("verification_code_expiry"),
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -311,7 +314,15 @@ export const registerSchema = insertUserSchema.omit({
   stripeCustomerId: true,
   stripeSubscriptionId: true,
   profileImageUrl: true,
+  emailVerified: true,
+  verificationCode: true,
+  verificationCodeExpiry: true,
+  permanentQrCode: true,
 }).extend({
+  email: z.string().email("Email tidak valid").refine((email) => email.toLowerCase().endsWith("@gmail.com"), {
+    message: "Email harus menggunakan Gmail (@gmail.com)",
+  }),
+  phone: z.string().regex(/^\+62[0-9]{9,12}$/, "Nomor telepon harus format Indonesia (+62 diikuti 9-12 digit)"),
   password: z.string().min(6, "Password minimal 6 karakter"),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -403,6 +414,12 @@ export const resetPasswordSchema = z.object({
   path: ["confirmPassword"],
 });
 
+// Email verification schema
+export const verifyEmailSchema = z.object({
+  email: z.string().email("Email tidak valid"),
+  verificationCode: z.string().length(6, "Kode verifikasi harus 6 digit"),
+});
+
 // Cookie Preferences Schema
 export const cookiePreferencesSchema = z.object({
   necessary: z.boolean().default(true),
@@ -451,5 +468,6 @@ export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type CookiePreferences = z.infer<typeof cookiePreferencesSchema>;
 export type CookieSettings = z.infer<typeof cookieSettingsSchema>;

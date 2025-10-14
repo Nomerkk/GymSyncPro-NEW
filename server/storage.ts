@@ -138,6 +138,10 @@ export interface IStorage {
   cleanupExpiredResetTokens(): Promise<number>;
   updateUserPassword(email: string, newPassword: string): Promise<void>;
   
+  // Email verification operations
+  storeVerificationCode(email: string, code: string): Promise<void>;
+  verifyEmailCode(email: string, code: string): Promise<boolean>;
+  
   // Notification operations
   getUserNotifications(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
@@ -1333,6 +1337,45 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date(),
       })
       .where(eq(users.email, email));
+  }
+
+  async storeVerificationCode(email: string, code: string): Promise<void> {
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
+    await db
+      .update(users)
+      .set({
+        verificationCode: code,
+        verificationCodeExpiry: expiresAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.email, email));
+  }
+
+  async verifyEmailCode(email: string, code: string): Promise<boolean> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (!user) return false;
+    if (!user.verificationCode) return false;
+    if (user.verificationCode !== code) return false;
+    if (!user.verificationCodeExpiry) return false;
+    if (new Date() > user.verificationCodeExpiry) return false;
+
+    // Mark email as verified and clear verification code
+    await db
+      .update(users)
+      .set({
+        emailVerified: true,
+        verificationCode: null,
+        verificationCodeExpiry: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.email, email));
+
+    return true;
   }
 
   // Notification operations

@@ -56,13 +56,13 @@ export default function Register() {
     mutationFn: async (data: RegisterFormData) => {
       return await apiRequest("POST", "/api/register", data);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    onSuccess: async (response: any) => {
       toast({
         title: "Registrasi berhasil",
-        description: "Selamat datang di Idachi Fitness!",
+        description: response.message || "Silakan cek email Anda untuk kode verifikasi",
       });
-      setLocation("/");
+      // Redirect to verify email page with email as query param
+      setLocation(`/verify-email?email=${encodeURIComponent(response.email)}`);
     },
     onError: (error: any) => {
       toast({
@@ -182,13 +182,13 @@ export default function Register() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">Email</FormLabel>
+                          <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">Email (Gmail)</FormLabel>
                           <FormControl>
                             <div className="relative">
                               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                               <Input
                                 type="email"
-                                placeholder="john@example.com"
+                                placeholder="nama@gmail.com"
                                 className="pl-10 h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
                                 data-testid="input-email"
                                 {...field}
@@ -211,7 +211,7 @@ export default function Register() {
                               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                               <Input
                                 type="tel"
-                                placeholder="08123456789"
+                                placeholder="+62812345678"
                                 className="pl-10 h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
                                 data-testid="input-phone"
                                 {...field}

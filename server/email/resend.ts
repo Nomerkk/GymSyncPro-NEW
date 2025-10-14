@@ -75,3 +75,37 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
     throw error;
   }
 }
+
+export async function sendVerificationEmail(toEmail: string, verificationCode: string) {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    
+    console.log(`[Resend] Attempting to send verification email to: ${toEmail}`);
+    console.log(`[Resend] From email: ${fromEmail}`);
+    
+    const result = await client.emails.send({
+      from: fromEmail,
+      to: toEmail,
+      subject: 'Verifikasi Email Anda - Idachi Fitness',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #EAB308;">Selamat Datang di Idachi Fitness!</h2>
+          <p>Terima kasih telah mendaftar. Untuk melanjutkan, mohon verifikasi email Anda dengan kode berikut:</p>
+          <div style="background-color: #FEF3C7; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0;">
+            <h1 style="color: #92400E; margin: 0; letter-spacing: 8px; font-size: 36px;">${verificationCode}</h1>
+          </div>
+          <p>Kode verifikasi ini akan kadaluarsa dalam <strong>15 menit</strong>.</p>
+          <p>Masukkan kode ini pada halaman verifikasi untuk mengaktifkan akun Anda.</p>
+          <p style="color: #666; font-size: 12px; margin-top: 30px;">Jika Anda tidak mendaftar di Idachi Fitness, abaikan email ini.</p>
+          <p style="color: #666; font-size: 12px;">- Tim Idachi Fitness</p>
+        </div>
+      `
+    });
+    
+    console.log(`[Resend] Verification email sent successfully.`, result);
+    return result;
+  } catch (error) {
+    console.error('[Resend] Error sending verification email:', error);
+    throw error;
+  }
+}

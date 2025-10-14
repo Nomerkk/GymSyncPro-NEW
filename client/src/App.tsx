@@ -11,6 +11,7 @@ import Register from "@/pages/register";
 import RegisterAdmin from "@/pages/register-admin";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
+import VerifyEmail from "@/pages/verify-email";
 import MemberDashboard from "@/pages/member-dashboard";
 import AdminOverview from "@/pages/admin-overview";
 import AdminMembers from "@/pages/admin-members";
@@ -45,6 +46,7 @@ function Router() {
       <Route path="/cookie-settings" component={CookieSettings} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/verify-email" component={VerifyEmail} />
       
       {!isAuthenticated ? (
         <>
