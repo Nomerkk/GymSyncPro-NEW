@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Navigation from "@/components/ui/navigation";
+import BottomNavigation from "@/components/ui/bottom-navigation";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -57,6 +58,13 @@ export default function MyBookings() {
     queryKey: ["/api/pt-bookings"],
     enabled: isAuthenticated,
   });
+
+  const { data: notifications } = useQuery<any[]>({
+    queryKey: ["/api/notifications"],
+    enabled: isAuthenticated,
+  });
+
+  const notificationCount = notifications?.filter(n => !n.isRead).length || 0;
 
   const handleCancelClassBooking = async (bookingId: string) => {
     if (!confirm("Yakin ingin membatalkan booking class ini?")) {
@@ -278,6 +286,8 @@ export default function MyBookings() {
           </Card>
         </div>
       </div>
+
+      <BottomNavigation notificationCount={notificationCount} />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Home, Calendar, Bell, User } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import ProfileSheet from "@/components/ui/profile-sheet";
+import NotificationsSheet from "@/components/ui/notifications-sheet";
 import { useState } from "react";
 
 interface BottomNavigationProps {
@@ -11,6 +12,7 @@ interface BottomNavigationProps {
 export default function BottomNavigation({ notificationCount = 0 }: BottomNavigationProps) {
   const [location] = useLocation();
   const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const [showNotificationsSheet, setShowNotificationsSheet] = useState(false);
 
   const navItems = [
     {
@@ -89,37 +91,42 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
             );
           }
           
-          // Regular buttons (notifications, etc)
+          // Notifications sheet
           if (item.type === "button") {
             return (
-              <button
+              <NotificationsSheet
                 key={item.testId}
-                className={`
-                  flex flex-col items-center justify-center gap-1 relative
-                  transition-colors duration-200
-                  ${isActive 
-                    ? 'text-primary' 
-                    : 'text-muted-foreground hover:text-foreground'
-                  }
-                `}
-                data-testid={item.testId}
+                open={showNotificationsSheet}
+                onOpenChange={setShowNotificationsSheet}
               >
-                <div className="relative">
-                  <Icon size={20} />
-                  {item.badge && item.badge > 0 && (
-                    <Badge 
-                      className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground text-xs h-4 w-4 flex items-center justify-center p-0"
-                      data-testid="badge-bottom-nav-notification"
-                    >
-                      {item.badge}
-                    </Badge>
+                <button
+                  className={`
+                    flex flex-col items-center justify-center gap-1 relative
+                    transition-colors duration-200
+                    ${showNotificationsSheet 
+                      ? 'text-primary' 
+                      : 'text-muted-foreground hover:text-foreground'
+                    }
+                  `}
+                  data-testid={item.testId}
+                >
+                  <div className="relative">
+                    <Icon size={20} />
+                    {item.badge && item.badge > 0 && (
+                      <Badge 
+                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground text-xs h-4 w-4 flex items-center justify-center p-0"
+                        data-testid="badge-bottom-nav-notification"
+                      >
+                        {item.badge}
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="text-xs font-medium">{item.label}</span>
+                  {showNotificationsSheet && (
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-primary rounded-b-full" />
                   )}
-                </div>
-                <span className="text-xs font-medium">{item.label}</span>
-                {isActive && (
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-primary rounded-b-full" />
-                )}
-              </button>
+                </button>
+              </NotificationsSheet>
             );
           }
           

@@ -181,6 +181,18 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Notifications
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  title: varchar("title").notNull(),
+  message: text("message").notNull(),
+  type: varchar("type").notNull(), // booking_confirmed, booking_cancelled, membership_expiring, etc.
+  relatedId: varchar("related_id"), // ID of related booking, membership, etc.
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
@@ -190,6 +202,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   feedbacks: many(feedbacks),
   ptBookings: many(ptBookings),
   oneTimeQrCodes: many(oneTimeQrCodes),
+  notifications: many(notifications),
 }));
 
 export const membershipPlansRelations = relations(membershipPlans, ({ many }) => ({
@@ -274,6 +287,13 @@ export const passwordResetTokensRelations = relations(passwordResetTokens, ({ on
   user: one(users, {
     fields: [passwordResetTokens.email],
     references: [users.email],
+  }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
   }),
 }));
 
@@ -364,6 +384,11 @@ export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTo
   createdAt: true,
 });
 
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Forgot password schemas
 export const forgotPasswordRequestSchema = z.object({
   email: z.string().email("Email tidak valid"),
@@ -422,6 +447,8 @@ export type OneTimeQrCode = typeof oneTimeQrCodes.$inferSelect;
 export type InsertOneTimeQrCode = z.infer<typeof insertOneTimeQrCodeSchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type CookiePreferences = z.infer<typeof cookiePreferencesSchema>;

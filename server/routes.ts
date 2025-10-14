@@ -258,6 +258,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Notification routes
+  app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const notifications = await storage.getUserNotifications(userId);
+      res.json(notifications);
+    } catch (error: any) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ message: error.message || "Gagal mengambil notifikasi" });
+    }
+  });
+
+  app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+      await storage.markNotificationAsRead(id, userId);
+      res.json({ message: "Notifikasi ditandai sebagai dibaca" });
+    } catch (error: any) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ message: error.message || "Gagal menandai notifikasi" });
+    }
+  });
+
+  app.put('/api/notifications/read-all', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      await storage.markAllNotificationsAsRead(userId);
+      res.json({ message: "Semua notifikasi ditandai sebagai dibaca" });
+    } catch (error: any) {
+      console.error("Error marking all notifications as read:", error);
+      res.status(500).json({ message: error.message || "Gagal menandai semua notifikasi" });
+    }
+  });
+
+  app.delete('/api/notifications/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+      await storage.deleteNotification(id, userId);
+      res.json({ message: "Notifikasi berhasil dihapus" });
+    } catch (error: any) {
+      console.error("Error deleting notification:", error);
+      res.status(500).json({ message: error.message || "Gagal menghapus notifikasi" });
+    }
+  });
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
@@ -1071,7 +1118,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Status is required' });
       }
 
+      // Get booking details before updating
+      const bookings = await storage.getAllClassBookings();
+      const booking = bookings.find(b => b.id === id);
+
       await storage.updateClassBookingStatus(id, status);
+
+      // Create notification when booking is confirmed or attended
+      if (booking && (status === 'attended' || status === 'booked')) {
+        const notificationTitle = status === 'attended' 
+          ? 'Class Booking Dikonfirmasi'
+          : 'Class Booking Berhasil';
+        const notificationMessage = status === 'attended'
+          ? `Booking Anda untuk class "${booking.gymClass.name}" telah dikonfirmasi oleh admin.`
+          : `Booking Anda untuk class "${booking.gymClass.name}" berhasil terdaftar.`;
+
+        await storage.createNotification({
+          userId: booking.userId,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'booking_confirmed',
+          relatedId: booking.id,
+          isRead: false,
+        });
+      }
+
       res.json({ message: 'Class booking updated successfully' });
     } catch (error) {
       console.error("Error updating class booking:", error);
@@ -1564,7 +1635,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Status is required' });
       }
 
+      // Get booking details before updating
+      const bookings = await storage.getAllPtBookings();
+      const booking = bookings.find(b => b.id === id);
+
       await storage.updatePtBookingStatus(id, status);
+
+      // Create notification when PT booking is confirmed or completed
+      if (booking && (status === 'confirmed' || status === 'completed')) {
+        const notificationTitle = status === 'confirmed'
+          ? 'Sesi PT Dikonfirmasi'
+          : 'Sesi PT Selesai';
+        const notificationMessage = status === 'confirmed'
+          ? `Sesi PT Anda dengan ${booking.trainer.name} telah dikonfirmasi oleh admin.`
+          : `Sesi PT Anda dengan ${booking.trainer.name} telah selesai.`;
+
+        await storage.createNotification({
+          userId: booking.userId,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'pt_booking_confirmed',
+          relatedId: booking.id,
+          isRead: false,
+        });
+      }
+
       res.json({ message: 'PT booking updated successfully' });
     } catch (error) {
       console.error("Error updating PT booking:", error);
