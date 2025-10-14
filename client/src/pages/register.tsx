@@ -11,7 +11,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import { Eye, EyeOff, User, Mail, Phone, Lock, UserPlus, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, User, Mail, Phone, Lock, UserPlus, ArrowRight, CheckCircle2, Send } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -21,6 +21,10 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
 
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -36,6 +40,7 @@ export default function Register() {
   });
 
   const password = form.watch("password");
+  const email = form.watch("email");
 
   const passwordStrength = useMemo(() => {
     if (!password) return { strength: 0, label: "", color: "" };
@@ -52,17 +57,84 @@ export default function Register() {
     return { strength, label: "Kuat", color: "bg-green-500" };
   }, [password]);
 
+  const handleSendCode = async () => {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({
+        title: "Email tidak valid",
+        description: "Mohon masukkan email yang valid",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!email.toLowerCase().endsWith("@gmail.com")) {
+      toast({
+        title: "Email tidak valid",
+        description: "Email harus menggunakan Gmail (@gmail.com)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      await apiRequest("POST", "/api/send-verification-code", { email });
+      setCodeSent(true);
+      toast({
+        title: "Kode Terkirim!",
+        description: "Kode verifikasi telah dikirim ke email Anda",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Gagal Mengirim Kode",
+        description: error.message || "Terjadi kesalahan saat mengirim kode verifikasi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!verificationCode || verificationCode.length !== 6) {
+      toast({
+        title: "Kode tidak valid",
+        description: "Mohon masukkan kode verifikasi 6 digit",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await apiRequest("POST", "/api/check-verification-code", { 
+        email, 
+        verificationCode 
+      });
+      setEmailVerified(true);
+      toast({
+        title: "Email Terverifikasi!",
+        description: "Silakan lanjutkan mengisi form registrasi",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Verifikasi Gagal",
+        description: error.message || "Kode verifikasi tidak valid atau sudah kadaluarsa",
+        variant: "destructive",
+      });
+    }
+  };
+
   const registerMutation = useMutation({
     mutationFn: async (data: RegisterFormData) => {
-      return await apiRequest("POST", "/api/register", data);
+      return await apiRequest("POST", "/api/register-verified", data);
     },
     onSuccess: async (response: any) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
         title: "Registrasi berhasil",
-        description: response.message || "Silakan cek email Anda untuk kode verifikasi",
+        description: "Selamat datang di Idachi Fitness!",
       });
-      // Redirect to verify email page with email as query param
-      setLocation(`/verify-email?email=${encodeURIComponent(response.email)}`);
+      setLocation("/");
     },
     onError: (error: any) => {
       toast({
@@ -74,6 +146,14 @@ export default function Register() {
   });
 
   const onSubmit = (data: RegisterFormData) => {
+    if (!emailVerified) {
+      toast({
+        title: "Email belum diverifikasi",
+        description: "Mohon verifikasi email Anda terlebih dahulu",
+        variant: "destructive",
+      });
+      return;
+    }
     registerMutation.mutate(data);
   };
 
@@ -175,30 +255,84 @@ export default function Register() {
                     )}
                   />
 
-                  {/* Email & Phone */}
-                  <div className="grid md:grid-cols-2 gap-4">
+                  {/* Email Verification Section */}
+                  <div className="space-y-4">
                     <FormField
                       control={form.control}
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">Email (Gmail)</FormLabel>
+                          <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">
+                            Email (Gmail) 
+                            {emailVerified && <CheckCircle2 className="inline ml-2 h-4 w-4 text-green-500" />}
+                          </FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                              <Input
-                                type="email"
-                                placeholder="nama@gmail.com"
-                                className="pl-10 h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
-                                data-testid="input-email"
-                                {...field}
-                              />
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                                <Input
+                                  type="email"
+                                  placeholder="nama@gmail.com"
+                                  className="pl-10 h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
+                                  data-testid="input-email"
+                                  disabled={emailVerified}
+                                  {...field}
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                onClick={handleSendCode}
+                                disabled={isSendingCode || emailVerified || !email}
+                                className="h-11 bg-yellow-500 hover:bg-yellow-600 text-white"
+                                data-testid="button-send-code"
+                              >
+                                {isSendingCode ? (
+                                  <div className="h-5 w-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : emailVerified ? (
+                                  <CheckCircle2 className="h-5 w-5" />
+                                ) : (
+                                  <Send className="h-5 w-5" />
+                                )}
+                              </Button>
                             </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
+                    {codeSent && !emailVerified && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Kode Verifikasi</label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            placeholder="Masukkan 6 digit kode"
+                            maxLength={6}
+                            value={verificationCode}
+                            onChange={(e) => setVerificationCode(e.target.value)}
+                            className="flex-1 h-11 text-center text-lg tracking-widest font-bold bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
+                            data-testid="input-verification-code"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleVerifyCode}
+                            disabled={verificationCode.length !== 6}
+                            className="h-11 bg-green-500 hover:bg-green-600 text-white"
+                            data-testid="button-verify-code"
+                          >
+                            Verifikasi
+                          </Button>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Kode verifikasi berlaku selama 15 menit
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Phone */}
+                  <div className="grid md:grid-cols-1 gap-4">
 
                     <FormField
                       control={form.control}
@@ -209,13 +343,13 @@ export default function Register() {
                           <FormControl>
                             <div className="relative">
                               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                              <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-400 font-medium">
+                              <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-400 font-medium pointer-events-none">
                                 +62
                               </div>
                               <Input
                                 type="tel"
                                 placeholder="812345678"
-                                className="pl-16 h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
+                                className="pl-[4.5rem] h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
                                 data-testid="input-phone"
                                 {...field}
                                 value={field.value || ""}

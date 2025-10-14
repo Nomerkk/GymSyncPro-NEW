@@ -193,6 +193,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send verification code (new flow - before registration)
+  app.post('/api/send-verification-code', async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ message: "Email diperlukan" });
+      }
+
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "Email sudah terdaftar" });
+      }
+
+      // Generate 6-digit verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store verification code
+      await storage.storeVerificationCode(email, verificationCode);
+      
+      // Send verification email
+      const { sendVerificationEmail } = await import('./email/resend');
+      await sendVerificationEmail(email, verificationCode);
+
+      res.json({ 
+        message: "Kode verifikasi telah dikirim ke email Anda",
+        success: true
+      });
+    } catch (error: any) {
+      console.error("Error during send verification:", error);
+      res.status(500).json({ message: error.message || "Gagal mengirim kode verifikasi" });
+    }
+  });
+
+  // Check verification code (without logging in)
+  app.post('/api/check-verification-code', async (req, res) => {
+    try {
+      const { email, verificationCode } = req.body;
+      
+      if (!email || !verificationCode) {
+        return res.status(400).json({ message: "Email dan kode verifikasi diperlukan" });
+      }
+
+      const verified = await storage.verifyEmailCode(email, verificationCode);
+      
+      if (!verified) {
+        return res.status(400).json({ message: "Kode verifikasi tidak valid atau sudah kadaluarsa" });
+      }
+
+      res.json({ 
+        message: "Email berhasil diverifikasi!",
+        verified: true
+      });
+    } catch (error: any) {
+      console.error("Error during check verification:", error);
+      res.status(400).json({ message: error.message || "Verifikasi gagal" });
+    }
+  });
+
+  // Register with verified email (new flow)
+  app.post('/api/register-verified', async (req, res) => {
+    try {
+      const validatedData = registerSchema.parse(req.body);
+      
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(validatedData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username sudah digunakan" });
+      }
+
+      const existingEmail = await storage.getUserByEmail(validatedData.email);
+      if (existingEmail) {
+        return res.status(400).json({ message: "Email sudah digunakan" });
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(validatedData.password, 10);
+
+      // Create user with emailVerified = true
+      const user = await storage.createUser({
+        username: validatedData.username,
+        email: validatedData.email,
+        firstName: validatedData.firstName,
+        lastName: validatedData.lastName,
+        phone: validatedData.phone ? `+62${validatedData.phone}` : undefined,
+        password: hashedPassword,
+        role: 'member',
+        emailVerified: true,
+      });
+
+      // Log user in
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Failed to login after registration" });
+        }
+        res.json({ 
+          message: "Registrasi berhasil! Selamat datang di Idachi Fitness!",
+          user: { ...user, password: undefined }
+        });
+      });
+    } catch (error: any) {
+      console.error("Error during registration:", error);
+      res.status(400).json({ message: error.message || "Registration failed" });
+    }
+  });
+
   // Resend verification code route
   app.post('/api/resend-verification-code', async (req, res) => {
     try {
