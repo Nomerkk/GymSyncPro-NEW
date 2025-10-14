@@ -40,13 +40,14 @@ import {
   type InsertNotification,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and, count, sum } from "drizzle-orm";
+import { eq, desc, gte, lte, and, or, count, sum } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByEmailOrPhoneOrUsername(identifier: string): Promise<User | undefined>;
   getUserByPermanentQrCode(qrCode: string): Promise<User | undefined>;
   createUser(user: UpsertUser): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
@@ -160,6 +161,28 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
+  }
+
+  async getUserByEmailOrPhoneOrUsername(identifier: string): Promise<User | undefined> {
+    // Normalize identifier (trim)
+    const normalizedIdentifier = identifier.trim();
+    
+    // Try to find user by username first
+    let user = await this.getUserByUsername(normalizedIdentifier);
+    if (user) return user;
+    
+    // Try to find user by email
+    user = await this.getUserByEmail(normalizedIdentifier);
+    if (user) return user;
+    
+    // Try to find user by phone (only if identifier is not empty and phone exists)
+    const [userByPhone] = await db
+      .select()
+      .from(users)
+      .where(eq(users.phone, normalizedIdentifier))
+      .limit(1);
+    
+    return userByPhone;
   }
 
   async createUser(userData: UpsertUser): Promise<User> {

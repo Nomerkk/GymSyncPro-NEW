@@ -144,12 +144,12 @@ export default function Login() {
                       name="username"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">Username</FormLabel>
+                          <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">Email/Nomor Telepon/Username</FormLabel>
                           <FormControl>
                             <div className="relative">
                               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                               <Input
-                                placeholder="Masukkan username"
+                                placeholder="Masukkan email, nomor telepon, atau username"
                                 className="pl-10 h-12 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-yellow-500 dark:focus:border-yellow-400"
                                 data-testid="input-username"
                                 {...field}

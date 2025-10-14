@@ -44,20 +44,21 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Local strategy
+  // Local strategy - supports login with email, phone, or username
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
-        const user = await storage.getUserByUsername(username);
+        // Try to find user by username, email, or phone
+        const user = await storage.getUserByEmailOrPhoneOrUsername(username);
         
         if (!user) {
-          return done(null, false, { message: "Username atau password salah" });
+          return done(null, false, { message: "Email/Nomor Telepon/Username atau password salah" });
         }
 
         const isValid = await bcrypt.compare(password, user.password);
         
         if (!isValid) {
-          return done(null, false, { message: "Username atau password salah" });
+          return done(null, false, { message: "Email/Nomor Telepon/Username atau password salah" });
         }
 
         return done(null, user);
