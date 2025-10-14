@@ -11,6 +11,20 @@ import { sendPasswordResetEmail } from "./email/resend";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 
+// Temporary storage for email verification codes (before user creation)
+const pendingVerifications = new Map<string, { code: string; expiresAt: Date }>();
+
+// Clean up expired verification codes every 5 minutes
+setInterval(() => {
+  const now = new Date();
+  const entries = Array.from(pendingVerifications.entries());
+  for (const [email, data] of entries) {
+    if (now > data.expiresAt) {
+      pendingVerifications.delete(email);
+    }
+  }
+}, 5 * 60 * 1000);
+
 // Make Stripe optional - can be added later
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
@@ -210,9 +224,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate 6-digit verification code
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
       
-      // Store verification code
-      await storage.storeVerificationCode(email, verificationCode);
+      // Store in pending verifications
+      pendingVerifications.set(email, { code: verificationCode, expiresAt });
       
       // Send verification email
       const { sendVerificationEmail } = await import('./email/resend');
@@ -237,11 +252,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Email dan kode verifikasi diperlukan" });
       }
 
-      const verified = await storage.verifyEmailCode(email, verificationCode);
+      const pending = pendingVerifications.get(email);
       
-      if (!verified) {
-        return res.status(400).json({ message: "Kode verifikasi tidak valid atau sudah kadaluarsa" });
+      if (!pending) {
+        return res.status(400).json({ message: "Kode verifikasi tidak ditemukan. Silakan kirim ulang kode." });
       }
+
+      if (new Date() > pending.expiresAt) {
+        pendingVerifications.delete(email);
+        return res.status(400).json({ message: "Kode verifikasi sudah kadaluarsa. Silakan kirim ulang kode." });
+      }
+
+      if (pending.code !== verificationCode) {
+        return res.status(400).json({ message: "Kode verifikasi tidak valid" });
+      }
+
+      // Mark as verified by keeping it but adding verified flag
+      pendingVerifications.set(email, { ...pending, verified: true } as any);
 
       res.json({ 
         message: "Email berhasil diverifikasi!",
@@ -257,6 +284,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/register-verified', async (req, res) => {
     try {
       const validatedData = registerSchema.parse(req.body);
+      
+      // Check if email was verified
+      const pending = pendingVerifications.get(validatedData.email);
+      if (!pending || !(pending as any).verified) {
+        return res.status(400).json({ message: "Email belum diverifikasi. Silakan verifikasi email terlebih dahulu." });
+      }
+
+      // Check if verification is still valid
+      if (new Date() > pending.expiresAt) {
+        pendingVerifications.delete(validatedData.email);
+        return res.status(400).json({ message: "Verifikasi email sudah kadaluarsa. Silakan verifikasi ulang." });
+      }
       
       // Check if username already exists
       const existingUser = await storage.getUserByUsername(validatedData.username);
@@ -283,6 +322,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: 'member',
         emailVerified: true,
       });
+
+      // Clear the pending verification
+      pendingVerifications.delete(validatedData.email);
 
       // Log user in
       req.login(user, (err) => {
