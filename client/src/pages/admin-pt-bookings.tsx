@@ -19,6 +19,7 @@ interface PTBooking {
   trainerId: string;
   bookingDate: string;
   duration: number;
+  sessionCount: number;
   status: string;
   notes?: string;
   createdAt: string;
@@ -228,6 +229,7 @@ export default function AdminPTBookings() {
                     <TableHead>Trainer</TableHead>
                     <TableHead>Tanggal & Waktu</TableHead>
                     <TableHead>Durasi</TableHead>
+                    <TableHead>Jumlah Sesi</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -236,7 +238,7 @@ export default function AdminPTBookings() {
                 <TableBody>
                   {filteredBookings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                         Tidak ada booking ditemukan
                       </TableCell>
                     </TableRow>
@@ -277,6 +279,11 @@ export default function AdminPTBookings() {
                           <div className="flex items-center gap-1">
                             <Clock className="h-4 w-4 text-muted-foreground" />
                             <span data-testid={`text-duration-${booking.id}`}>{booking.duration} menit</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-center font-medium" data-testid={`text-session-count-${booking.id}`}>
+                            {booking.sessionCount || 1} sesi
                           </div>
                         </TableCell>
                         <TableCell>

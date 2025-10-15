@@ -156,6 +156,7 @@ export const ptBookings = pgTable("pt_bookings", {
   trainerId: varchar("trainer_id").notNull().references(() => personalTrainers.id),
   bookingDate: timestamp("booking_date").notNull(),
   duration: integer("duration").default(60), // minutes
+  sessionCount: integer("session_count").notNull().default(1), // number of sessions
   status: varchar("status").default("pending"), // pending, confirmed, completed, cancelled
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),

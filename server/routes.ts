@@ -1788,6 +1788,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         trainerId: z.string().min(1, "Trainer ID is required"),
         bookingDate: z.string().min(1, "Booking date is required"),
         duration: z.number().optional().default(60),
+        sessionCount: z.number().int().min(1, "Session count must be at least 1").optional().default(1),
         notes: z.string().optional(),
       });
 
@@ -1798,6 +1799,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         trainerId: validatedData.trainerId,
         bookingDate: new Date(validatedData.bookingDate),
         duration: validatedData.duration,
+        sessionCount: validatedData.sessionCount,
         notes: validatedData.notes,
         status: 'pending',
       });

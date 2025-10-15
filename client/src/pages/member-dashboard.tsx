@@ -80,11 +80,12 @@ export default function MemberDashboard() {
 
   const [selectedTrainer, setSelectedTrainer] = useState<any>(null);
   const [ptBookingDate, setPtBookingDate] = useState("");
+  const [ptSessionCount, setPtSessionCount] = useState(1);
   const [ptNotes, setPtNotes] = useState("");
   const [showPtBookingModal, setShowPtBookingModal] = useState(false);
 
   const bookPtMutation = useMutation({
-    mutationFn: async (data: { trainerId: string; bookingDate: string; notes?: string }) => {
+    mutationFn: async (data: { trainerId: string; bookingDate: string; sessionCount?: number; notes?: string }) => {
       const response = await apiRequest("POST", "/api/pt-bookings", data);
       return await response.json();
     },
@@ -92,6 +93,7 @@ export default function MemberDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/pt-bookings"] });
       setShowPtBookingModal(false);
       setPtBookingDate("");
+      setPtSessionCount(1);
       setPtNotes("");
       setSelectedTrainer(null);
       toast({
@@ -739,6 +741,22 @@ export default function MemberDashboard() {
               </div>
               
               <div className="space-y-2">
+                <Label htmlFor="session-count">Jumlah Sesi</Label>
+                <Input
+                  id="session-count"
+                  type="number"
+                  min="1"
+                  value={ptSessionCount}
+                  onChange={(e) => setPtSessionCount(parseInt(e.target.value) || 1)}
+                  required
+                  data-testid="input-pt-session-count"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Total: Rp{(parseFloat(selectedTrainer.pricePerSession) * ptSessionCount).toLocaleString('id-ID')}
+                </p>
+              </div>
+              
+              <div className="space-y-2">
                 <Label htmlFor="booking-notes">Notes (Optional)</Label>
                 <Textarea
                   id="booking-notes"
@@ -763,6 +781,7 @@ export default function MemberDashboard() {
                   bookPtMutation.mutate({
                     trainerId: selectedTrainer.id,
                     bookingDate: ptBookingDate,
+                    sessionCount: ptSessionCount,
                     notes: ptNotes || undefined,
                   });
                 }}
