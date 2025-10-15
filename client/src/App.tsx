@@ -21,9 +21,11 @@ import AdminPlans from "@/pages/admin-plans";
 import AdminCheckIns from "@/pages/admin-checkins";
 import AdminFeedback from "@/pages/admin-feedback";
 import AdminPTBookings from "@/pages/admin-pt-bookings";
+import AdminPTSessions from "@/pages/admin-pt-sessions";
 import AdminClassBookings from "@/pages/admin-class-bookings";
 import Checkout from "@/pages/checkout";
 import MyBookings from "@/pages/my-bookings";
+import MyPtSessions from "@/pages/my-pt-sessions";
 import CheckInVerify from "@/pages/checkin-verify";
 import CookieSettings from "@/pages/cookie-settings";
 import NotFound from "@/pages/not-found";
@@ -69,9 +71,11 @@ function Router() {
           <Route path="/admin/checkins" component={AdminCheckIns} />
           <Route path="/admin/feedback" component={AdminFeedback} />
           <Route path="/admin/pt-bookings" component={AdminPTBookings} />
+          <Route path="/admin/pt-sessions" component={AdminPTSessions} />
           <Route path="/admin/class-bookings" component={AdminClassBookings} />
           <Route path="/checkout" component={Checkout} />
           <Route path="/my-bookings" component={MyBookings} />
+          <Route path="/my-pt-sessions" component={MyPtSessions} />
           <Route path="/login">
             <Redirect to="/" />
           </Route>

@@ -9,6 +9,8 @@ import {
   feedbacks,
   personalTrainers,
   ptBookings,
+  ptSessionPackages,
+  ptSessionAttendance,
   oneTimeQrCodes,
   passwordResetTokens,
   notifications,
@@ -32,6 +34,10 @@ import {
   type InsertPersonalTrainer,
   type PtBooking,
   type InsertPtBooking,
+  type PtSessionPackage,
+  type InsertPtSessionPackage,
+  type PtSessionAttendance,
+  type InsertPtSessionAttendance,
   type OneTimeQrCode,
   type InsertOneTimeQrCode,
   type PasswordResetToken,
@@ -130,6 +136,20 @@ export interface IStorage {
   createPtBooking(booking: InsertPtBooking): Promise<PtBooking>;
   updatePtBookingStatus(id: string, status: string): Promise<void>;
   cancelPtBooking(id: string): Promise<void>;
+  
+  // PT Session Package operations
+  createPtSessionPackage(packageData: InsertPtSessionPackage): Promise<PtSessionPackage>;
+  getUserPtSessionPackages(userId: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer })[]>;
+  getPtSessionPackageById(id: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer; user: User }) | undefined>;
+  updatePtSessionPackage(id: string, packageData: Partial<InsertPtSessionPackage>): Promise<void>;
+  
+  // PT Session Attendance operations
+  createPtSessionAttendance(attendanceData: InsertPtSessionAttendance): Promise<PtSessionAttendance>;
+  getPackageAttendanceSessions(packageId: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer })[]>;
+  getUserPtAttendanceSessions(userId: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer; package: PtSessionPackage })[]>;
+  getPtSessionAttendanceById(id: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer; user: User; package: PtSessionPackage }) | undefined>;
+  updatePtSessionAttendance(id: string, attendanceData: Partial<InsertPtSessionAttendance>): Promise<void>;
+  confirmPtSessionAttendance(id: string, adminId: string): Promise<void>;
   
   // Password Reset operations
   createPasswordResetToken(email: string, token: string): Promise<PasswordResetToken>;
@@ -1130,6 +1150,286 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date(),
       })
       .where(eq(ptBookings.id, id));
+  }
+
+  // PT Session Package operations
+  async createPtSessionPackage(packageData: InsertPtSessionPackage): Promise<PtSessionPackage> {
+    const [pkg] = await db.insert(ptSessionPackages).values(packageData).returning();
+    return pkg;
+  }
+
+  async getUserPtSessionPackages(userId: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer })[]> {
+    const result = await db
+      .select({
+        id: ptSessionPackages.id,
+        userId: ptSessionPackages.userId,
+        trainerId: ptSessionPackages.trainerId,
+        totalSessions: ptSessionPackages.totalSessions,
+        usedSessions: ptSessionPackages.usedSessions,
+        remainingSessions: ptSessionPackages.remainingSessions,
+        pricePerSession: ptSessionPackages.pricePerSession,
+        totalPrice: ptSessionPackages.totalPrice,
+        status: ptSessionPackages.status,
+        purchaseDate: ptSessionPackages.purchaseDate,
+        expiryDate: ptSessionPackages.expiryDate,
+        createdAt: ptSessionPackages.createdAt,
+        updatedAt: ptSessionPackages.updatedAt,
+        trainer: personalTrainers,
+      })
+      .from(ptSessionPackages)
+      .innerJoin(personalTrainers, eq(ptSessionPackages.trainerId, personalTrainers.id))
+      .where(eq(ptSessionPackages.userId, userId))
+      .orderBy(desc(ptSessionPackages.createdAt));
+
+    return result.map(row => ({
+      id: row.id,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      totalSessions: row.totalSessions,
+      usedSessions: row.usedSessions,
+      remainingSessions: row.remainingSessions,
+      pricePerSession: row.pricePerSession,
+      totalPrice: row.totalPrice,
+      status: row.status,
+      purchaseDate: row.purchaseDate,
+      expiryDate: row.expiryDate,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      trainer: row.trainer,
+    }));
+  }
+
+  async getPtSessionPackageById(id: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer; user: User }) | undefined> {
+    const result = await db
+      .select({
+        id: ptSessionPackages.id,
+        userId: ptSessionPackages.userId,
+        trainerId: ptSessionPackages.trainerId,
+        totalSessions: ptSessionPackages.totalSessions,
+        usedSessions: ptSessionPackages.usedSessions,
+        remainingSessions: ptSessionPackages.remainingSessions,
+        pricePerSession: ptSessionPackages.pricePerSession,
+        totalPrice: ptSessionPackages.totalPrice,
+        status: ptSessionPackages.status,
+        purchaseDate: ptSessionPackages.purchaseDate,
+        expiryDate: ptSessionPackages.expiryDate,
+        createdAt: ptSessionPackages.createdAt,
+        updatedAt: ptSessionPackages.updatedAt,
+        trainer: personalTrainers,
+        user: users,
+      })
+      .from(ptSessionPackages)
+      .innerJoin(personalTrainers, eq(ptSessionPackages.trainerId, personalTrainers.id))
+      .innerJoin(users, eq(ptSessionPackages.userId, users.id))
+      .where(eq(ptSessionPackages.id, id))
+      .limit(1);
+
+    if (result.length === 0) return undefined;
+
+    const row = result[0];
+    return {
+      id: row.id,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      totalSessions: row.totalSessions,
+      usedSessions: row.usedSessions,
+      remainingSessions: row.remainingSessions,
+      pricePerSession: row.pricePerSession,
+      totalPrice: row.totalPrice,
+      status: row.status,
+      purchaseDate: row.purchaseDate,
+      expiryDate: row.expiryDate,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      trainer: row.trainer,
+      user: row.user,
+    };
+  }
+
+  async updatePtSessionPackage(id: string, packageData: Partial<InsertPtSessionPackage>): Promise<void> {
+    await db
+      .update(ptSessionPackages)
+      .set({
+        ...packageData,
+        updatedAt: new Date(),
+      })
+      .where(eq(ptSessionPackages.id, id));
+  }
+
+  // PT Session Attendance operations
+  async createPtSessionAttendance(attendanceData: InsertPtSessionAttendance): Promise<PtSessionAttendance> {
+    const [attendance] = await db.insert(ptSessionAttendance).values(attendanceData).returning();
+    return attendance;
+  }
+
+  async getPackageAttendanceSessions(packageId: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer })[]> {
+    const result = await db
+      .select({
+        id: ptSessionAttendance.id,
+        packageId: ptSessionAttendance.packageId,
+        userId: ptSessionAttendance.userId,
+        trainerId: ptSessionAttendance.trainerId,
+        sessionDate: ptSessionAttendance.sessionDate,
+        sessionNumber: ptSessionAttendance.sessionNumber,
+        status: ptSessionAttendance.status,
+        checkInTime: ptSessionAttendance.checkInTime,
+        checkOutTime: ptSessionAttendance.checkOutTime,
+        notes: ptSessionAttendance.notes,
+        adminConfirmed: ptSessionAttendance.adminConfirmed,
+        confirmedBy: ptSessionAttendance.confirmedBy,
+        confirmedAt: ptSessionAttendance.confirmedAt,
+        createdAt: ptSessionAttendance.createdAt,
+        updatedAt: ptSessionAttendance.updatedAt,
+        trainer: personalTrainers,
+      })
+      .from(ptSessionAttendance)
+      .innerJoin(personalTrainers, eq(ptSessionAttendance.trainerId, personalTrainers.id))
+      .where(eq(ptSessionAttendance.packageId, packageId))
+      .orderBy(desc(ptSessionAttendance.sessionNumber));
+
+    return result.map(row => ({
+      id: row.id,
+      packageId: row.packageId,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      sessionDate: row.sessionDate,
+      sessionNumber: row.sessionNumber,
+      status: row.status,
+      checkInTime: row.checkInTime,
+      checkOutTime: row.checkOutTime,
+      notes: row.notes,
+      adminConfirmed: row.adminConfirmed,
+      confirmedBy: row.confirmedBy,
+      confirmedAt: row.confirmedAt,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      trainer: row.trainer,
+    }));
+  }
+
+  async getUserPtAttendanceSessions(userId: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer; package: PtSessionPackage })[]> {
+    const result = await db
+      .select({
+        id: ptSessionAttendance.id,
+        packageId: ptSessionAttendance.packageId,
+        userId: ptSessionAttendance.userId,
+        trainerId: ptSessionAttendance.trainerId,
+        sessionDate: ptSessionAttendance.sessionDate,
+        sessionNumber: ptSessionAttendance.sessionNumber,
+        status: ptSessionAttendance.status,
+        checkInTime: ptSessionAttendance.checkInTime,
+        checkOutTime: ptSessionAttendance.checkOutTime,
+        notes: ptSessionAttendance.notes,
+        adminConfirmed: ptSessionAttendance.adminConfirmed,
+        confirmedBy: ptSessionAttendance.confirmedBy,
+        confirmedAt: ptSessionAttendance.confirmedAt,
+        createdAt: ptSessionAttendance.createdAt,
+        updatedAt: ptSessionAttendance.updatedAt,
+        trainer: personalTrainers,
+        package: ptSessionPackages,
+      })
+      .from(ptSessionAttendance)
+      .innerJoin(personalTrainers, eq(ptSessionAttendance.trainerId, personalTrainers.id))
+      .innerJoin(ptSessionPackages, eq(ptSessionAttendance.packageId, ptSessionPackages.id))
+      .where(eq(ptSessionAttendance.userId, userId))
+      .orderBy(desc(ptSessionAttendance.sessionDate));
+
+    return result.map(row => ({
+      id: row.id,
+      packageId: row.packageId,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      sessionDate: row.sessionDate,
+      sessionNumber: row.sessionNumber,
+      status: row.status,
+      checkInTime: row.checkInTime,
+      checkOutTime: row.checkOutTime,
+      notes: row.notes,
+      adminConfirmed: row.adminConfirmed,
+      confirmedBy: row.confirmedBy,
+      confirmedAt: row.confirmedAt,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      trainer: row.trainer,
+      package: row.package,
+    }));
+  }
+
+  async getPtSessionAttendanceById(id: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer; user: User; package: PtSessionPackage }) | undefined> {
+    const result = await db
+      .select({
+        id: ptSessionAttendance.id,
+        packageId: ptSessionAttendance.packageId,
+        userId: ptSessionAttendance.userId,
+        trainerId: ptSessionAttendance.trainerId,
+        sessionDate: ptSessionAttendance.sessionDate,
+        sessionNumber: ptSessionAttendance.sessionNumber,
+        status: ptSessionAttendance.status,
+        checkInTime: ptSessionAttendance.checkInTime,
+        checkOutTime: ptSessionAttendance.checkOutTime,
+        notes: ptSessionAttendance.notes,
+        adminConfirmed: ptSessionAttendance.adminConfirmed,
+        confirmedBy: ptSessionAttendance.confirmedBy,
+        confirmedAt: ptSessionAttendance.confirmedAt,
+        createdAt: ptSessionAttendance.createdAt,
+        updatedAt: ptSessionAttendance.updatedAt,
+        trainer: personalTrainers,
+        user: users,
+        package: ptSessionPackages,
+      })
+      .from(ptSessionAttendance)
+      .innerJoin(personalTrainers, eq(ptSessionAttendance.trainerId, personalTrainers.id))
+      .innerJoin(users, eq(ptSessionAttendance.userId, users.id))
+      .innerJoin(ptSessionPackages, eq(ptSessionAttendance.packageId, ptSessionPackages.id))
+      .where(eq(ptSessionAttendance.id, id))
+      .limit(1);
+
+    if (result.length === 0) return undefined;
+
+    const row = result[0];
+    return {
+      id: row.id,
+      packageId: row.packageId,
+      userId: row.userId,
+      trainerId: row.trainerId,
+      sessionDate: row.sessionDate,
+      sessionNumber: row.sessionNumber,
+      status: row.status,
+      checkInTime: row.checkInTime,
+      checkOutTime: row.checkOutTime,
+      notes: row.notes,
+      adminConfirmed: row.adminConfirmed,
+      confirmedBy: row.confirmedBy,
+      confirmedAt: row.confirmedAt,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      trainer: row.trainer,
+      user: row.user,
+      package: row.package,
+    };
+  }
+
+  async updatePtSessionAttendance(id: string, attendanceData: Partial<InsertPtSessionAttendance>): Promise<void> {
+    await db
+      .update(ptSessionAttendance)
+      .set({
+        ...attendanceData,
+        updatedAt: new Date(),
+      })
+      .where(eq(ptSessionAttendance.id, id));
+  }
+
+  async confirmPtSessionAttendance(id: string, adminId: string): Promise<void> {
+    await db
+      .update(ptSessionAttendance)
+      .set({
+        adminConfirmed: true,
+        confirmedBy: adminId,
+        confirmedAt: new Date(),
+        status: 'completed',
+        updatedAt: new Date(),
+      })
+      .where(eq(ptSessionAttendance.id, id));
   }
 
   // One-time QR code operations

@@ -1902,6 +1902,286 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PT Session Package routes
+  app.post('/api/pt-session-packages', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      
+      const packageSchema = z.object({
+        trainerId: z.string().min(1, "Trainer ID is required"),
+        totalSessions: z.number().min(1, "Total sessions must be at least 1"),
+        pricePerSession: z.string(),
+      });
+
+      const validatedData = packageSchema.parse(req.body);
+      const totalPrice = (parseFloat(validatedData.pricePerSession) * validatedData.totalSessions).toFixed(2);
+
+      const pkg = await storage.createPtSessionPackage({
+        userId,
+        trainerId: validatedData.trainerId,
+        totalSessions: validatedData.totalSessions,
+        usedSessions: 0,
+        remainingSessions: validatedData.totalSessions,
+        pricePerSession: validatedData.pricePerSession,
+        totalPrice,
+        status: 'active',
+      });
+
+      res.json(pkg);
+    } catch (error: any) {
+      console.error("Error creating PT session package:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid package data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create PT session package" });
+    }
+  });
+
+  app.get('/api/pt-session-packages', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const packages = await storage.getUserPtSessionPackages(userId);
+      res.json(packages);
+    } catch (error) {
+      console.error("Error fetching PT session packages:", error);
+      res.status(500).json({ message: "Failed to fetch PT session packages" });
+    }
+  });
+
+  app.get('/api/pt-session-packages/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const pkg = await storage.getPtSessionPackageById(id);
+      
+      if (!pkg) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+      
+      res.json(pkg);
+    } catch (error) {
+      console.error("Error fetching PT session package:", error);
+      res.status(500).json({ message: "Failed to fetch PT session package" });
+    }
+  });
+
+  // PT Session Attendance routes
+  app.post('/api/pt-session-attendance', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+
+      const attendanceSchema = z.object({
+        packageId: z.string().min(1, "Package ID is required"),
+        sessionDate: z.string().min(1, "Session date is required"),
+        notes: z.string().optional(),
+      });
+
+      const validatedData = attendanceSchema.parse(req.body);
+
+      // Get package to validate and get session number
+      const pkg = await storage.getPtSessionPackageById(validatedData.packageId);
+      if (!pkg) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+
+      if (pkg.userId !== userId) {
+        return res.status(403).json({ message: 'Unauthorized' });
+      }
+
+      if (pkg.remainingSessions <= 0) {
+        return res.status(400).json({ message: 'No remaining sessions' });
+      }
+
+      // Get existing sessions to determine session number
+      const existingSessions = await storage.getPackageAttendanceSessions(validatedData.packageId);
+      const sessionNumber = existingSessions.length + 1;
+
+      const attendance = await storage.createPtSessionAttendance({
+        packageId: validatedData.packageId,
+        userId,
+        trainerId: pkg.trainerId,
+        sessionDate: new Date(validatedData.sessionDate),
+        sessionNumber,
+        status: 'scheduled',
+        notes: validatedData.notes,
+        adminConfirmed: false,
+      });
+
+      res.json(attendance);
+    } catch (error: any) {
+      console.error("Error creating PT session attendance:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid attendance data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create PT session attendance" });
+    }
+  });
+
+  app.get('/api/pt-session-attendance', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const sessions = await storage.getUserPtAttendanceSessions(userId);
+      res.json(sessions);
+    } catch (error) {
+      console.error("Error fetching PT session attendance:", error);
+      res.status(500).json({ message: "Failed to fetch PT session attendance" });
+    }
+  });
+
+  app.get('/api/pt-session-attendance/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const session = await storage.getPtSessionAttendanceById(id);
+      
+      if (!session) {
+        return res.status(404).json({ message: 'Session not found' });
+      }
+      
+      res.json(session);
+    } catch (error) {
+      console.error("Error fetching PT session attendance:", error);
+      res.status(500).json({ message: "Failed to fetch PT session attendance" });
+    }
+  });
+
+  app.put('/api/pt-session-attendance/:id/check-in', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      
+      const session = await storage.getPtSessionAttendanceById(id);
+      
+      if (!session) {
+        return res.status(404).json({ message: 'Session not found' });
+      }
+
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: 'Unauthorized' });
+      }
+
+      if (session.status === 'completed') {
+        return res.status(400).json({ message: 'Session already completed' });
+      }
+
+      await storage.updatePtSessionAttendance(id, {
+        checkInTime: new Date(),
+        status: 'completed',
+      });
+
+      res.json({ message: 'Checked in successfully' });
+    } catch (error) {
+      console.error("Error checking in PT session:", error);
+      res.status(500).json({ message: "Failed to check in" });
+    }
+  });
+
+  // Admin PT session attendance routes
+  app.get('/api/admin/pt-session-packages', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.id);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      // Get all users' packages
+      const allUsers = await storage.getAllUsers();
+      const allPackages = [];
+      
+      for (const u of allUsers) {
+        const userPackages = await storage.getUserPtSessionPackages(u.id);
+        allPackages.push(...userPackages.map(pkg => ({
+          ...pkg,
+          user: u,
+        })));
+      }
+
+      res.json(allPackages);
+    } catch (error) {
+      console.error("Error fetching PT session packages:", error);
+      res.status(500).json({ message: "Failed to fetch PT session packages" });
+    }
+  });
+
+  app.get('/api/admin/pt-session-attendance', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.id);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      // Get all users' sessions
+      const allUsers = await storage.getAllUsers();
+      const allSessions = [];
+      
+      for (const u of allUsers) {
+        const userSessions = await storage.getUserPtAttendanceSessions(u.id);
+        allSessions.push(...userSessions.map(session => ({
+          ...session,
+          user: u,
+        })));
+      }
+
+      res.json(allSessions);
+    } catch (error) {
+      console.error("Error fetching PT session attendance:", error);
+      res.status(500).json({ message: "Failed to fetch PT session attendance" });
+    }
+  });
+
+  app.put('/api/admin/pt-session-attendance/:id/confirm', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminId = req.user.id;
+      const user = await storage.getUser(adminId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      const session = await storage.getPtSessionAttendanceById(id);
+      
+      if (!session) {
+        return res.status(404).json({ message: 'Session not found' });
+      }
+
+      if (session.adminConfirmed) {
+        return res.status(400).json({ message: 'Session already confirmed' });
+      }
+
+      // Confirm attendance
+      await storage.confirmPtSessionAttendance(id, adminId);
+
+      // Update package used sessions
+      const pkg = await storage.getPtSessionPackageById(session.packageId);
+      if (pkg) {
+        const newUsedSessions = (pkg.usedSessions || 0) + 1;
+        const newRemainingSessions = pkg.totalSessions - newUsedSessions;
+        
+        await storage.updatePtSessionPackage(session.packageId, {
+          usedSessions: newUsedSessions,
+          remainingSessions: newRemainingSessions,
+          status: newRemainingSessions <= 0 ? 'completed' : 'active',
+        });
+      }
+
+      // Create notification
+      await storage.createNotification({
+        userId: session.userId,
+        title: 'Sesi PT Dikonfirmasi',
+        message: `Sesi PT Anda dengan ${session.trainer.name} telah dikonfirmasi oleh admin.`,
+        type: 'pt_session_confirmed',
+        relatedId: session.id,
+        isRead: false,
+      });
+
+      res.json({ message: 'Session confirmed successfully' });
+    } catch (error) {
+      console.error("Error confirming PT session:", error);
+      res.status(500).json({ message: "Failed to confirm session" });
+    }
+  });
+
   // Indonesian Payment Gateway Routes
   
   // QRIS Payment

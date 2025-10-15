@@ -162,6 +162,42 @@ export const ptBookings = pgTable("pt_bookings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// PT Session Packages (member buys X sessions)
+export const ptSessionPackages = pgTable("pt_session_packages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  trainerId: varchar("trainer_id").notNull().references(() => personalTrainers.id),
+  totalSessions: integer("total_sessions").notNull(), // total sessions bought
+  usedSessions: integer("used_sessions").default(0), // sessions used/attended
+  remainingSessions: integer("remaining_sessions").notNull(), // sessions left
+  pricePerSession: decimal("price_per_session", { precision: 10, scale: 2 }).notNull(),
+  totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status").default("active"), // active, completed, expired
+  purchaseDate: timestamp("purchase_date").defaultNow(),
+  expiryDate: timestamp("expiry_date"), // optional expiry
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// PT Session Attendance (tracks each session)
+export const ptSessionAttendance = pgTable("pt_session_attendance", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  packageId: varchar("package_id").notNull().references(() => ptSessionPackages.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  trainerId: varchar("trainer_id").notNull().references(() => personalTrainers.id),
+  sessionDate: timestamp("session_date").notNull(),
+  sessionNumber: integer("session_number").notNull(), // which session (1, 2, 3, etc.)
+  status: varchar("status").default("scheduled"), // scheduled, completed, cancelled, no_show
+  checkInTime: timestamp("check_in_time"),
+  checkOutTime: timestamp("check_out_time"),
+  notes: text("notes"),
+  adminConfirmed: boolean("admin_confirmed").default(false),
+  confirmedBy: varchar("confirmed_by"), // admin user id
+  confirmedAt: timestamp("confirmed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // One-time QR codes for check-in
 export const oneTimeQrCodes = pgTable("one_time_qr_codes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -204,6 +240,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   payments: many(payments),
   feedbacks: many(feedbacks),
   ptBookings: many(ptBookings),
+  ptSessionPackages: many(ptSessionPackages),
+  ptSessionAttendance: many(ptSessionAttendance),
   oneTimeQrCodes: many(oneTimeQrCodes),
   notifications: many(notifications),
 }));
@@ -266,6 +304,8 @@ export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
 
 export const personalTrainersRelations = relations(personalTrainers, ({ many }) => ({
   bookings: many(ptBookings),
+  sessionPackages: many(ptSessionPackages),
+  sessionAttendance: many(ptSessionAttendance),
 }));
 
 export const ptBookingsRelations = relations(ptBookings, ({ one }) => ({
@@ -275,6 +315,33 @@ export const ptBookingsRelations = relations(ptBookings, ({ one }) => ({
   }),
   trainer: one(personalTrainers, {
     fields: [ptBookings.trainerId],
+    references: [personalTrainers.id],
+  }),
+}));
+
+export const ptSessionPackagesRelations = relations(ptSessionPackages, ({ one, many }) => ({
+  user: one(users, {
+    fields: [ptSessionPackages.userId],
+    references: [users.id],
+  }),
+  trainer: one(personalTrainers, {
+    fields: [ptSessionPackages.trainerId],
+    references: [personalTrainers.id],
+  }),
+  sessions: many(ptSessionAttendance),
+}));
+
+export const ptSessionAttendanceRelations = relations(ptSessionAttendance, ({ one }) => ({
+  package: one(ptSessionPackages, {
+    fields: [ptSessionAttendance.packageId],
+    references: [ptSessionPackages.id],
+  }),
+  user: one(users, {
+    fields: [ptSessionAttendance.userId],
+    references: [users.id],
+  }),
+  trainer: one(personalTrainers, {
+    fields: [ptSessionAttendance.trainerId],
     references: [personalTrainers.id],
   }),
 }));
@@ -385,6 +452,18 @@ export const insertPtBookingSchema = createInsertSchema(ptBookings).omit({
   updatedAt: true,
 });
 
+export const insertPtSessionPackageSchema = createInsertSchema(ptSessionPackages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPtSessionAttendanceSchema = createInsertSchema(ptSessionAttendance).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertOneTimeQrCodeSchema = createInsertSchema(oneTimeQrCodes).omit({
   id: true,
   createdAt: true,
@@ -460,6 +539,10 @@ export type PersonalTrainer = typeof personalTrainers.$inferSelect;
 export type InsertPersonalTrainer = z.infer<typeof insertPersonalTrainerSchema>;
 export type PtBooking = typeof ptBookings.$inferSelect;
 export type InsertPtBooking = z.infer<typeof insertPtBookingSchema>;
+export type PtSessionPackage = typeof ptSessionPackages.$inferSelect;
+export type InsertPtSessionPackage = z.infer<typeof insertPtSessionPackageSchema>;
+export type PtSessionAttendance = typeof ptSessionAttendance.$inferSelect;
+export type InsertPtSessionAttendance = z.infer<typeof insertPtSessionAttendanceSchema>;
 export type OneTimeQrCode = typeof oneTimeQrCodes.$inferSelect;
 export type InsertOneTimeQrCode = z.infer<typeof insertOneTimeQrCodeSchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
