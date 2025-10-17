@@ -17,6 +17,7 @@ The client application uses React with TypeScript, built with Vite for developme
 The application features modern, responsive design with:
 - **Authentication Pages**: Split-screen layouts with gradient backgrounds, glassmorphism effects, and hero sections featuring brand messaging. All forms include icon-enhanced inputs, password visibility toggles, and smooth transitions.
 - **Password Security**: Real-time password strength indicators on registration forms with visual feedback (weak/medium/strong) based on length, character variety, and complexity.
+- **Selfie Verification**: Mandatory selfie capture during registration using device camera. The system enforces front-facing camera (selfie mode) only, with no file upload option. Registration cannot proceed without capturing a selfie photo, which is automatically saved as the user's profile image.
 - **Cookie Consent System**: GDPR-compliant cookie management with consent banner, granular preference controls, and persistent storage. Users can customize analytics, marketing, and preference cookies independently.
 - **Responsive Design**: Mobile-first approach with adaptive layouts that progressively enhance for larger screens, ensuring optimal UX across all devices.
 
@@ -48,7 +49,9 @@ This structure enables type sharing between frontend and backend while maintaini
 ### Member Inactivity Reminders
 The system automatically tracks member activity and sends reminders to inactive members:
 - **Auto-detection**: Identifies members who haven't checked in for 7 days
-- **In-app Notifications**: Sends friendly reminder notifications ("Ayo Ngegym Lagi! 💪")
+- **Dual Notifications**: 
+  - In-app notification with message: "Ayo nge-gym lagi! Jangan tunggu nanti — mulai hari ini! 💪"
+  - Email notification with motivational message and booking link
 - **Scheduled Task**: Runs automatically every 24 hours to check and notify inactive members
 - **Admin Controls**: 
   - Manual trigger: `POST /api/admin/send-inactivity-reminders` (with optional `daysInactive` parameter)
