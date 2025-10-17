@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, User, Mail, Phone, Lock, UserPlus, ArrowRight, CheckCircle2, Send } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import CameraSelfie from "@/components/CameraSelfie";
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
@@ -36,6 +37,7 @@ export default function Register() {
       phone: "",
       password: "",
       confirmPassword: "",
+      selfieImage: "",
     },
   });
 
@@ -330,6 +332,31 @@ export default function Register() {
                       </div>
                     )}
                   </div>
+
+                  {/* Selfie Photo Section */}
+                  <FormField
+                    control={form.control}
+                    name="selfieImage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">
+                          Foto Selfie <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <CameraSelfie
+                            onCapture={(imageData) => {
+                              field.onChange(imageData);
+                            }}
+                            capturedImage={field.value}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Foto selfie wajib diambil untuk melanjutkan registrasi
+                        </p>
+                      </FormItem>
+                    )}
+                  />
 
                   {/* Phone */}
                   <div className="grid md:grid-cols-1 gap-4">
