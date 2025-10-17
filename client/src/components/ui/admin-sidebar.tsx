@@ -34,7 +34,10 @@ export default function AdminSidebar({ className, isOpen, onClose }: AdminSideba
     { href: "/admin/feedback", icon: MessageSquare, label: "Feedback" },
   ];
 
-  const handleNavClick = (href: string) => {
+  const handleNavClick = (e: React.MouseEvent, href: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('Navigating to:', href);
     window.location.href = href;
     onClose();
   };
@@ -55,9 +58,9 @@ export default function AdminSidebar({ className, isOpen, onClose }: AdminSideba
           "fixed lg:sticky top-0 left-0 h-screen z-50 flex flex-col",
           "bg-white dark:bg-slate-900",
           "border-r border-slate-200 dark:border-slate-800",
-          "transition-all duration-200 lg:translate-x-0",
+          "transition-transform duration-200",
           "w-64",
-          isOpen ? "translate-x-0" : "-translate-x-full",
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           className
         )}
       >
@@ -70,6 +73,7 @@ export default function AdminSidebar({ className, isOpen, onClose }: AdminSideba
             <button
               onClick={onClose}
               className="lg:hidden p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
+              data-testid="button-close-sidebar"
             >
               <X size={20} className="text-slate-600 dark:text-slate-400" />
             </button>
@@ -85,9 +89,10 @@ export default function AdminSidebar({ className, isOpen, onClose }: AdminSideba
             return (
               <button
                 key={item.href}
-                onClick={() => handleNavClick(item.href)}
+                type="button"
+                onClick={(e) => handleNavClick(e, item.href)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer",
                   isActive 
                     ? "bg-blue-600 text-white" 
                     : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
