@@ -10,6 +10,7 @@ import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSch
 import { sendPasswordResetEmail } from "./email/resend";
 import { z } from "zod";
 import { randomUUID } from "crypto";
+import { sendNotificationWithPush } from "./push";
 
 // Temporary storage for email verification codes (before user creation)
 const pendingVerifications = new Map<string, { code: string; expiresAt: Date }>();
@@ -1441,7 +1442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? `Booking Anda untuk class "${booking.gymClass.name}" telah dikonfirmasi oleh admin.`
           : `Booking Anda untuk class "${booking.gymClass.name}" berhasil terdaftar.`;
 
-        await storage.createNotification({
+        await sendNotificationWithPush(booking.userId, {
           userId: booking.userId,
           title: notificationTitle,
           message: notificationMessage,
@@ -1960,7 +1961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? `Sesi PT Anda dengan ${booking.trainer.name} telah dikonfirmasi oleh admin.`
           : `Sesi PT Anda dengan ${booking.trainer.name} telah selesai.`;
 
-        await storage.createNotification({
+        await sendNotificationWithPush(booking.userId, {
           userId: booking.userId,
           title: notificationTitle,
           message: notificationMessage,
@@ -2241,7 +2242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create notification
-      await storage.createNotification({
+      await sendNotificationWithPush(session.userId, {
         userId: session.userId,
         title: 'Sesi PT Dikonfirmasi',
         message: `Sesi PT Anda dengan ${session.trainer.name} telah dikonfirmasi oleh admin.`,

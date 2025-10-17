@@ -56,11 +56,14 @@ export const subscribeToPushNotifications = async (): Promise<boolean> => {
       applicationServerKey: urlBase64ToUint8Array(publicKey),
     });
 
+    const p256dh = subscription.getKey('p256dh');
+    const auth = subscription.getKey('auth');
+    
     await apiRequest('POST', '/api/push/subscribe', {
       endpoint: subscription.endpoint,
       keys: {
-        p256dh: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('p256dh')!))),
-        auth: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('auth')!))),
+        p256dh: btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(p256dh!)))),
+        auth: btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(auth!)))),
       },
     });
 
