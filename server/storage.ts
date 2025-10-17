@@ -1855,8 +1855,8 @@ export class DatabaseStorage implements IStorage {
       // Create in-app notification
       await this.createNotification({
         userId: member.id,
-        title: 'Ayo Ngegym Lagi! 💪',
-        message: `Sudah ${daysInactive} hari kamu tidak ngegym. Yuk, lanjutkan perjalanan fitness kamu!`,
+        title: 'Reminder Gym 💪',
+        message: 'Ayo nge-gym lagi! Jangan tunggu nanti — mulai hari ini! 💪',
         type: 'inactivity_reminder',
         relatedId: member.membership.id,
       });
