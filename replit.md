@@ -43,6 +43,17 @@ The codebase follows a monorepo structure with clear separation:
 - `/shared` - Shared TypeScript schemas and types
 This structure enables type sharing between frontend and backend while maintaining clear boundaries.
 
+## Key Features
+
+### Member Inactivity Reminders
+The system automatically tracks member activity and sends reminders to inactive members:
+- **Auto-detection**: Identifies members who haven't checked in for 7 days
+- **In-app Notifications**: Sends friendly reminder notifications ("Ayo Ngegym Lagi! 💪")
+- **Scheduled Task**: Runs automatically every 24 hours to check and notify inactive members
+- **Admin Controls**: 
+  - Manual trigger: `POST /api/admin/send-inactivity-reminders` (with optional `daysInactive` parameter)
+  - View inactive members: `GET /api/admin/inactive-members?days=7`
+
 ## External Dependencies
 
 ### Core Infrastructure
