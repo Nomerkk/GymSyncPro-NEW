@@ -540,6 +540,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Push Subscription routes
+  app.post('/api/push/subscribe', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { endpoint, keys } = req.body;
+      
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ message: "Invalid subscription data" });
+      }
+
+      const subscription = await storage.createPushSubscription({
+        userId,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.json({ message: "Subscription berhasil disimpan", subscription });
+    } catch (error: any) {
+      console.error("Error saving push subscription:", error);
+      res.status(500).json({ message: error.message || "Gagal menyimpan subscription" });
+    }
+  });
+
+  app.delete('/api/push/unsubscribe', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { endpoint } = req.body;
+      
+      if (!endpoint) {
+        return res.status(400).json({ message: "Endpoint required" });
+      }
+
+      await storage.deletePushSubscription(endpoint, userId);
+      res.json({ message: "Subscription berhasil dihapus" });
+    } catch (error: any) {
+      console.error("Error deleting push subscription:", error);
+      res.status(500).json({ message: error.message || "Gagal menghapus subscription" });
+    }
+  });
+
+  app.get('/api/push/public-key', async (_req, res) => {
+    const publicKey = process.env.VAPID_PUBLIC_KEY;
+    if (!publicKey) {
+      return res.status(500).json({ message: "VAPID keys not configured" });
+    }
+    res.json({ publicKey });
+  });
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
