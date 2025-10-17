@@ -412,6 +412,7 @@ export const registerSchema = insertUserSchema.omit({
   phone: z.string().regex(/^[0-9]{9,12}$/, "Nomor telepon harus 9-12 digit angka"),
   password: z.string().min(6, "Password minimal 6 karakter"),
   confirmPassword: z.string(),
+  selfieImage: z.string().min(1, "Foto selfie wajib diambil"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Password tidak cocok",
   path: ["confirmPassword"],
