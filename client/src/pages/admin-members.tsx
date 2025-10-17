@@ -12,7 +12,8 @@ import AdminLayout from "@/components/ui/admin-layout";
 import AdminMemberDialog from "@/components/admin-member-dialog";
 import AdminEditMemberDialog from "@/components/admin-edit-member-dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { UserPlus, Edit, Trash2, UserX, UserCheck, Search } from "lucide-react";
+import { UserPlus, Edit, Trash2, UserX, UserCheck, Search, Activity } from "lucide-react";
+import { format } from "date-fns";
 
 interface MemberWithMembership {
   id: string;
@@ -23,6 +24,8 @@ interface MemberWithMembership {
   lastName?: string;
   profileImageUrl?: string;
   active?: boolean;
+  lastCheckIn?: string | null;
+  daysInactive?: number | null;
   membership?: {
     status?: string;
     endDate?: string;
@@ -273,6 +276,12 @@ export default function AdminMembers() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                         Status
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                        Last Check-in
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                        Inactive Days
+                      </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase">
                         Actions
                       </th>
@@ -317,6 +326,27 @@ export default function AdminMembers() {
                           <Badge variant={getStatusVariant(getMembershipStatus(member))}>
                             {getMembershipStatus(member)}
                           </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-foreground">
+                          {member.lastCheckIn ? (
+                            <div className="flex items-center gap-2">
+                              <Activity size={14} className="text-green-600" />
+                              {format(new Date(member.lastCheckIn), 'dd MMM yyyy')}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Never</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {member.daysInactive !== null && member.daysInactive !== undefined ? (
+                            <Badge 
+                              variant={member.daysInactive >= 7 ? "destructive" : member.daysInactive >= 3 ? "secondary" : "default"}
+                            >
+                              {member.daysInactive} {member.daysInactive === 1 ? 'day' : 'days'}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-2">
