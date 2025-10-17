@@ -1,8 +1,7 @@
 import { useState } from "react";
 import Navigation from "./navigation";
 import AdminSidebar from "./admin-sidebar";
-import { Button } from "./button";
-import { Menu } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface AdminLayoutProps {
   user: any;
@@ -14,29 +13,43 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       <Navigation 
         user={user} 
         isAdmin={true}
         notificationCount={notificationCount}
       />
       
-      {/* Hamburger Menu Button - Mobile & Desktop */}
+      {/* Enhanced Hamburger Menu Button */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="fixed top-3.5 left-4 z-30 p-2 rounded-lg bg-card border border-border shadow-lg hover:bg-muted transition-colors lg:hidden"
+        className={cn(
+          "fixed top-5 left-5 z-50 group",
+          "w-11 h-11 rounded-xl",
+          "bg-gradient-to-br from-blue-500 to-purple-600",
+          "hover:from-blue-600 hover:to-purple-700",
+          "shadow-lg hover:shadow-xl",
+          "transition-all duration-300 ease-out",
+          "flex items-center justify-center",
+          "border-2 border-white/20",
+          sidebarOpen && "rotate-90"
+        )}
         data-testid="button-toggle-sidebar"
       >
-        <Menu size={18} />
-      </button>
-
-      {/* Desktop Hamburger */}
-      <button
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="hidden lg:block fixed top-3.5 left-4 z-30 p-2 rounded-lg bg-card/80 backdrop-blur-sm border border-border shadow-md hover:bg-muted transition-colors"
-        data-testid="button-toggle-sidebar-desktop"
-      >
-        <Menu size={18} />
+        <div className="relative w-5 h-4 flex flex-col justify-between">
+          <span className={cn(
+            "w-full h-0.5 bg-white rounded-full transition-all duration-300 origin-left",
+            sidebarOpen && "rotate-45 translate-x-0.5"
+          )} />
+          <span className={cn(
+            "w-full h-0.5 bg-white rounded-full transition-all duration-300",
+            sidebarOpen && "opacity-0 scale-0"
+          )} />
+          <span className={cn(
+            "w-full h-0.5 bg-white rounded-full transition-all duration-300 origin-left",
+            sidebarOpen && "-rotate-45 translate-x-0.5"
+          )} />
+        </div>
       </button>
       
       <div className="flex h-[calc(100vh-64px)]">
@@ -46,7 +59,7 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
         />
         
         <main className="flex-1 overflow-auto">
-          <div className="p-3 md:p-4 max-w-[1600px] mx-auto">
+          <div className="p-6 md:p-8 lg:p-10 max-w-[1800px] mx-auto">
             {children}
           </div>
         </main>
