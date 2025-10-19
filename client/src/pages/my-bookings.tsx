@@ -1,14 +1,15 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import Navigation from "@/components/ui/navigation";
+import MemberSidebar from "@/components/ui/member-sidebar";
 import BottomNavigation from "@/components/ui/bottom-navigation";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Clock, User, Dumbbell, Users, X } from "lucide-react";
+import { Calendar, Clock, User, Dumbbell, Users, X, Menu, Bell, LogOut } from "lucide-react";
 
 interface ClassBookingWithClass {
   id: string;
@@ -48,6 +49,19 @@ interface PtBookingWithTrainer {
 export default function MyBookings() {
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/logout");
+      queryClient.clear();
+      window.location.href = "/login";
+    } catch (error) {
+      console.error("Logout error:", error);
+      queryClient.clear();
+      window.location.href = "/login";
+    }
+  };
 
   const { data: classBookings, isLoading: loadingClasses } = useQuery<ClassBookingWithClass[]>({
     queryKey: ["/api/class-bookings"],
@@ -135,10 +149,53 @@ export default function MyBookings() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <Navigation user={user} />
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <MemberSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Bar */}
+        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 lg:px-6">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              data-testid="button-toggle-sidebar"
+            >
+              <Menu className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            </button>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">
+              My Bookings
+            </h1>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative"
+              data-testid="button-notifications"
+            >
+              <Bell className="h-5 w-5" />
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">
+                  {notificationCount}
+                </span>
+              )}
+            </Button>
+            <Button
+              onClick={handleLogout}
+              variant="ghost"
+              size="sm"
+              data-testid="button-logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </Button>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto bg-muted/30 pb-20 md:pb-0">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-foreground">Booking Saya</h2>
           <p className="text-muted-foreground mt-1">Lihat dan kelola semua booking Anda</p>
@@ -285,9 +342,11 @@ export default function MyBookings() {
             </CardContent>
           </Card>
         </div>
-      </div>
+          </div>
+        </main>
 
-      <BottomNavigation notificationCount={notificationCount} />
+        <BottomNavigation notificationCount={notificationCount} />
+      </div>
     </div>
   );
 }

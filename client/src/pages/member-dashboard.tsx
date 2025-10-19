@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import QRModal from "@/components/qr-modal";
 import PaymentModal from "@/components/payment-modal";
 import FeedbackModal from "@/components/feedback-modal";
-import Navigation from "@/components/ui/navigation";
+import MemberSidebar from "@/components/ui/member-sidebar";
 import BottomNavigation from "@/components/ui/bottom-navigation";
 import {
   CalendarCheck,
@@ -31,6 +31,9 @@ import {
   Activity,
   TrendingUp,
   Dumbbell,
+  Menu,
+  Bell,
+  LogOut,
 } from "lucide-react";
 
 export default function MemberDashboard() {
@@ -39,6 +42,7 @@ export default function MemberDashboard() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -53,6 +57,26 @@ export default function MemberDashboard() {
       return;
     }
   }, [isAuthenticated, isLoading, toast]);
+
+  useEffect(() => {
+    const handleOpenCheckin = () => {
+      generateQRMutation.mutate();
+    };
+    window.addEventListener('open-checkin', handleOpenCheckin);
+    return () => window.removeEventListener('open-checkin', handleOpenCheckin);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/logout");
+      queryClient.clear();
+      window.location.href = "/login";
+    } catch (error) {
+      console.error("Logout error:", error);
+      queryClient.clear();
+      window.location.href = "/login";
+    }
+  };
 
   const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
     queryKey: ["/api/member/dashboard"],
@@ -225,10 +249,53 @@ export default function MemberDashboard() {
   const crowdInfo = getCrowdLevel(crowdCount);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-muted/30 via-background to-muted/20 pb-20 md:pb-0">
-      <Navigation user={user} notificationCount={isExpiringSoon ? 1 : 0} />
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <MemberSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Bar */}
+        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 lg:px-6">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              data-testid="button-toggle-sidebar"
+            >
+              <Menu className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            </button>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">
+              Dashboard
+            </h1>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative"
+              data-testid="button-notifications"
+            >
+              <Bell className="h-5 w-5" />
+              {isExpiringSoon && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">
+                  1
+                </span>
+              )}
+            </Button>
+            <Button
+              onClick={handleLogout}
+              variant="ghost"
+              size="sm"
+              data-testid="button-logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </Button>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto bg-gradient-to-br from-muted/30 via-background to-muted/20 pb-20 md:pb-0">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Welcome Section - More Compact */}
         <div className="mb-6 sm:mb-8">
           <div className="flex flex-col gap-3 sm:gap-4">
@@ -684,9 +751,10 @@ export default function MemberDashboard() {
             </Card>
           </div>
         </div>
-      </div>
+          </div>
+        </main>
 
-      {/* Modals */}
+        {/* Modals */}
       <QRModal
         isOpen={showQRModal}
         onClose={() => setShowQRModal(false)}
@@ -796,8 +864,9 @@ export default function MemberDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Bottom Navigation for Mobile */}
-      <BottomNavigation notificationCount={isExpiringSoon ? 1 : 0} />
+        {/* Bottom Navigation for Mobile */}
+        <BottomNavigation notificationCount={isExpiringSoon ? 1 : 0} />
+      </div>
     </div>
   );
 }
