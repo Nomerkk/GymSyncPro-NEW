@@ -96,11 +96,11 @@ export default function MemberDashboard() {
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Modern Header with Greeting */}
-      <header className="bg-gradient-to-br from-primary/10 via-neon-purple/5 to-background border-b border-border/50 sticky top-0 z-10 backdrop-blur-xl">
+      <header className="bg-gradient-to-br from-primary/15 via-neon-purple/10 to-background border-b border-border sticky top-0 z-10 backdrop-blur-xl shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <Avatar className="h-14 w-14 border-4 border-background shadow-lg ring-2 ring-primary/20">
+              <Avatar className="h-14 w-14 border-4 border-background shadow-lg ring-2 ring-primary/30">
                 <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName} />
                 <AvatarFallback className="bg-gradient-to-br from-primary to-neon-purple text-white font-bold text-lg">
                   {user?.firstName?.[0]}{user?.lastName?.[0]}
@@ -110,16 +110,16 @@ export default function MemberDashboard() {
                 <h1 className="text-2xl font-bold text-foreground">
                   Hey, {user.firstName}! 👋
                 </h1>
-                <p className="text-sm text-muted-foreground">Ready to crush it today?</p>
+                <p className="text-sm text-muted-foreground font-medium">Ready to crush it today?</p>
               </div>
             </div>
             <button
               onClick={toggleTheme}
-              className="p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-all active:scale-95"
+              className="p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-all active:scale-95 border border-border shadow-sm"
               data-testid="button-theme-toggle"
             >
               {theme === 'light' ? (
-                <Moon className="h-5 w-5 text-muted-foreground" />
+                <Moon className="h-5 w-5 text-foreground" />
               ) : (
                 <Sun className="h-5 w-5 text-yellow-500" />
               )}
@@ -204,50 +204,50 @@ export default function MemberDashboard() {
         <section>
           <h2 className="text-lg font-bold text-foreground mb-4">Your Activity</h2>
           <div className="grid grid-cols-2 gap-3">
-            <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+            <Card className="p-4 border-border bg-card shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-xl">
+                <div className="p-2 bg-primary/15 dark:bg-primary/10 rounded-xl border border-primary/20">
                   <Activity className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{checkIns.length}</p>
-                  <p className="text-xs text-muted-foreground">Check-ins</p>
+                  <p className="text-xs text-muted-foreground font-medium">Check-ins</p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+            <Card className="p-4 border-border bg-card shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-neon-purple/10 rounded-xl">
+                <div className="p-2 bg-neon-purple/15 dark:bg-neon-purple/10 rounded-xl border border-neon-purple/20">
                   <TrendingUp className="h-5 w-5 text-neon-purple" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{stats.weeklyCheckIns || 0}</p>
-                  <p className="text-xs text-muted-foreground">This Week</p>
+                  <p className="text-xs text-muted-foreground font-medium">This Week</p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+            <Card className="p-4 border-border bg-card shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-500/10 rounded-xl">
+                <div className="p-2 bg-orange-500/15 dark:bg-orange-500/10 rounded-xl border border-orange-500/20">
                   <Dumbbell className="h-5 w-5 text-orange-500" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{stats.monthlyCheckIns || 0}</p>
-                  <p className="text-xs text-muted-foreground">This Month</p>
+                  <p className="text-xs text-muted-foreground font-medium">This Month</p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+            <Card className="p-4 border-border bg-card shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/10 rounded-xl">
+                <div className="p-2 bg-blue-500/15 dark:bg-blue-500/10 rounded-xl border border-blue-500/20">
                   <Zap className="h-5 w-5 text-blue-500" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{stats.currentStreak || 0}</p>
-                  <p className="text-xs text-muted-foreground">Day Streak</p>
+                  <p className="text-xs text-muted-foreground font-medium">Day Streak</p>
                 </div>
               </div>
             </Card>
@@ -263,10 +263,10 @@ export default function MemberDashboard() {
             </div>
             <div className="space-y-2">
               {checkIns.slice(0, 3).map((checkIn: any) => (
-                <Card key={checkIn.id} className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+                <Card key={checkIn.id} className="p-4 border-border bg-card shadow-sm">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-neon-green/10 rounded-xl">
+                      <div className="p-2 bg-neon-green/15 dark:bg-neon-green/10 rounded-xl border border-neon-green/20">
                         <Clock className="h-4 w-4 text-neon-green" />
                       </div>
                       <div>

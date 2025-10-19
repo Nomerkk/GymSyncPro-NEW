@@ -151,10 +151,10 @@ export default function MyBookings() {
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
-      <header className="bg-gradient-to-br from-primary/10 via-neon-purple/5 to-background border-b border-border/50 sticky top-0 z-10 backdrop-blur-xl">
+      <header className="bg-gradient-to-br from-primary/15 via-neon-purple/10 to-background border-b border-border sticky top-0 z-10 backdrop-blur-xl shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-foreground mb-1">My Bookings</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground font-medium">
             {activeClasses.length + activePT.length} active bookings
           </p>
         </div>
@@ -185,14 +185,14 @@ export default function MyBookings() {
           {/* Class Bookings */}
           <TabsContent value="classes" className="space-y-3 mt-0">
             {!classBookings || classBookings.length === 0 ? (
-              <Card className="p-8 text-center border-border/50 bg-card/50 backdrop-blur-sm">
+              <Card className="p-8 text-center border-border bg-card shadow-sm">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="p-4 bg-muted rounded-full">
+                  <div className="p-4 bg-muted rounded-full border border-border">
                     <Dumbbell className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <div>
                     <p className="font-semibold text-foreground mb-1">No Class Bookings</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground font-medium">
                       Book your first class to get started!
                     </p>
                   </div>
@@ -203,15 +203,15 @@ export default function MyBookings() {
                 <Card 
                   key={booking.id} 
                   className={cn(
-                    "p-5 border-border/50 backdrop-blur-sm transition-all hover:shadow-md",
-                    booking.status === 'cancelled' ? "bg-muted/20 opacity-60" : "bg-card/50"
+                    "p-5 border-border transition-all hover:shadow-md shadow-sm",
+                    booking.status === 'cancelled' ? "bg-muted/30 opacity-60" : "bg-card"
                   )}
                   data-testid={`booking-class-${booking.id}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="p-2 bg-neon-purple/10 rounded-xl">
+                        <div className="p-2 bg-neon-purple/15 dark:bg-neon-purple/10 rounded-xl border border-neon-purple/20">
                           <Dumbbell className="h-4 w-4 text-neon-purple" />
                         </div>
                         <h3 className="font-bold text-foreground">{booking.gymClass.name}</h3>
@@ -257,14 +257,14 @@ export default function MyBookings() {
           {/* PT Bookings */}
           <TabsContent value="pt" className="space-y-3 mt-0">
             {!ptBookings || ptBookings.length === 0 ? (
-              <Card className="p-8 text-center border-border/50 bg-card/50 backdrop-blur-sm">
+              <Card className="p-8 text-center border-border bg-card shadow-sm">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="p-4 bg-muted rounded-full">
+                  <div className="p-4 bg-muted rounded-full border border-border">
                     <User className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <div>
                     <p className="font-semibold text-foreground mb-1">No PT Sessions</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground font-medium">
                       Book a personal trainer session today!
                     </p>
                   </div>
@@ -275,15 +275,15 @@ export default function MyBookings() {
                 <Card 
                   key={booking.id} 
                   className={cn(
-                    "p-5 border-border/50 backdrop-blur-sm transition-all hover:shadow-md",
-                    booking.status === 'cancelled' ? "bg-muted/20 opacity-60" : "bg-card/50"
+                    "p-5 border-border transition-all hover:shadow-md shadow-sm",
+                    booking.status === 'cancelled' ? "bg-muted/30 opacity-60" : "bg-card"
                   )}
                   data-testid={`booking-pt-${booking.id}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="p-2 bg-neon-green/10 rounded-xl">
+                        <div className="p-2 bg-neon-green/15 dark:bg-neon-green/10 rounded-xl border border-neon-green/20">
                           <User className="h-4 w-4 text-neon-green" />
                         </div>
                         <h3 className="font-bold text-foreground">{booking.trainer.name}</h3>

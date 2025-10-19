@@ -51,7 +51,7 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-xl border-t border-border z-50 pb-safe">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/98 backdrop-blur-xl border-t border-border shadow-lg z-50 pb-safe">
       <div className="grid grid-cols-4 h-16 px-2">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -74,8 +74,8 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
                   data-testid={item.testId}
                 >
                   <div className={cn(
-                    "relative p-2.5 rounded-xl transition-all duration-300",
-                    isActive ? "bg-primary/10" : ""
+                    "relative p-2.5 rounded-xl transition-all duration-300 border",
+                    isActive ? "bg-primary/15 dark:bg-primary/10 border-primary/20" : "border-transparent"
                   )}>
                     <Icon className={cn(
                       "h-5 w-5 transition-colors duration-300",
@@ -83,7 +83,7 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
                     )} />
                   </div>
                   <span className={cn(
-                    "text-[10px] font-medium transition-colors duration-300",
+                    "text-[10px] font-semibold transition-colors duration-300",
                     isActive ? "text-primary" : "text-muted-foreground"
                   )}>
                     {item.label}
@@ -113,15 +113,15 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
                   data-testid={item.testId}
                 >
                   <div className={cn(
-                    "relative p-2.5 rounded-xl transition-all duration-300",
-                    showNotificationsSheet ? "bg-primary/10" : ""
+                    "relative p-2.5 rounded-xl transition-all duration-300 border",
+                    showNotificationsSheet ? "bg-primary/15 dark:bg-primary/10 border-primary/20" : "border-transparent"
                   )}>
                     <Icon className={cn(
                       "h-5 w-5 transition-colors duration-300",
                       showNotificationsSheet ? "text-primary" : "text-muted-foreground"
                     )} />
                     {item.badge && item.badge > 0 && (
-                      <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-neon-green dark:bg-neon-green rounded-full flex items-center justify-center animate-scale-in">
+                      <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-neon-green dark:bg-neon-green rounded-full flex items-center justify-center animate-scale-in shadow-md border border-neon-green/20">
                         <span className="text-[10px] font-bold text-white px-1">
                           {item.badge > 9 ? '9+' : item.badge}
                         </span>
@@ -129,7 +129,7 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
                     )}
                   </div>
                   <span className={cn(
-                    "text-[10px] font-medium transition-colors duration-300",
+                    "text-[10px] font-semibold transition-colors duration-300",
                     showNotificationsSheet ? "text-primary" : "text-muted-foreground"
                   )}>
                     {item.label}
@@ -155,8 +155,8 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
               data-testid={item.testId}
             >
               <div className={cn(
-                "relative p-2.5 rounded-xl transition-all duration-300",
-                isActive ? "bg-primary/10" : ""
+                "relative p-2.5 rounded-xl transition-all duration-300 border",
+                isActive ? "bg-primary/15 dark:bg-primary/10 border-primary/20" : "border-transparent"
               )}>
                 <Icon className={cn(
                   "h-5 w-5 transition-colors duration-300",
@@ -164,7 +164,7 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
                 )} />
               </div>
               <span className={cn(
-                "text-[10px] font-medium transition-colors duration-300",
+                "text-[10px] font-semibold transition-colors duration-300",
                 isActive ? "text-primary" : "text-muted-foreground"
               )}>
                 {item.label}

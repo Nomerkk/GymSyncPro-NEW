@@ -4,30 +4,30 @@
 @tailwind utilities;
 
 :root {
-  /* Light Mode - Clean & Soft */
-  --background: hsl(210, 20%, 98%);
+  /* Light Mode - Clean & Visible */
+  --background: hsl(0, 0%, 97%);
   --foreground: hsl(222, 47%, 11%);
   --card: hsl(0, 0%, 100%);
   --card-foreground: hsl(222, 47%, 11%);
   --popover: hsl(0, 0%, 100%);
   --popover-foreground: hsl(222, 47%, 11%);
-  --primary: hsl(142, 76%, 36%);
+  --primary: hsl(142, 76%, 40%);
   --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(210, 40%, 96%);
-  --secondary-foreground: hsl(222, 47%, 11%);
-  --muted: hsl(210, 40%, 96%);
-  --muted-foreground: hsl(215, 16%, 47%);
-  --accent: hsl(142, 76%, 36%);
+  --secondary: hsl(210, 30%, 93%);
+  --secondary-foreground: hsl(222, 47%, 15%);
+  --muted: hsl(210, 25%, 92%);
+  --muted-foreground: hsl(215, 20%, 35%);
+  --accent: hsl(142, 76%, 40%);
   --accent-foreground: hsl(0, 0%, 100%);
-  --neon-green: hsl(142, 76%, 36%);
-  --neon-purple: hsl(271, 76%, 53%);
+  --neon-green: hsl(142, 76%, 38%);
+  --neon-purple: hsl(271, 76%, 50%);
   --destructive: hsl(0, 84%, 60%);
   --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(214, 32%, 91%);
-  --input: hsl(214, 32%, 91%);
-  --ring: hsl(142, 76%, 36%);
-  --chart-1: hsl(142, 76%, 36%);
-  --chart-2: hsl(271, 76%, 53%);
+  --border: hsl(214, 25%, 85%);
+  --input: hsl(214, 25%, 90%);
+  --ring: hsl(142, 76%, 40%);
+  --chart-1: hsl(142, 76%, 40%);
+  --chart-2: hsl(271, 76%, 50%);
   --chart-3: hsl(38, 92%, 50%);
   --chart-4: hsl(217, 91%, 60%);
   --chart-5: hsl(340, 75%, 55%);
