@@ -1,4 +1,4 @@
-import { LogOut, User, Settings, HelpCircle, FileText } from "lucide-react";
+import { LogOut, User, Settings, HelpCircle, FileText, Moon, Sun, ChevronRight } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -13,6 +13,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import PushNotificationToggle from "@/components/push-notification-toggle";
+import { useTheme } from "@/components/theme-provider";
+import { cn } from "@/lib/utils";
 
 interface ProfileSheetProps {
   children: React.ReactNode;
@@ -22,6 +24,7 @@ interface ProfileSheetProps {
 
 export default function ProfileSheet({ children, open, onOpenChange }: ProfileSheetProps) {
   const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const logoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/logout"),
@@ -35,25 +38,29 @@ export default function ProfileSheet({ children, open, onOpenChange }: ProfileSh
       icon: User,
       label: "My Profile",
       href: "#",
-      testId: "menu-profile"
+      testId: "menu-profile",
+      color: "text-neon-green"
     },
     {
       icon: Settings,
       label: "Settings",
       href: "#",
-      testId: "menu-settings"
+      testId: "menu-settings",
+      color: "text-muted-foreground"
     },
     {
       icon: FileText,
       label: "Terms & Conditions",
       href: "#",
-      testId: "menu-terms"
+      testId: "menu-terms",
+      color: "text-muted-foreground"
     },
     {
       icon: HelpCircle,
       label: "Help & Support",
       href: "#",
-      testId: "menu-help"
+      testId: "menu-help",
+      color: "text-muted-foreground"
     }
   ];
 
@@ -62,68 +69,120 @@ export default function ProfileSheet({ children, open, onOpenChange }: ProfileSh
       <SheetTrigger asChild>
         {children}
       </SheetTrigger>
-      <SheetContent side="bottom" className="h-auto max-h-[85vh]">
-        <SheetHeader className="space-y-4">
-          <SheetTitle className="text-left">Profile</SheetTitle>
+      <SheetContent 
+        side="bottom" 
+        className="h-auto max-h-[90vh] rounded-t-3xl border-0 bg-card"
+      >
+        <SheetHeader className="space-y-6 pt-2">
+          <div className="w-12 h-1.5 bg-muted rounded-full mx-auto" />
+          <SheetTitle className="text-left text-2xl font-bold">Profile</SheetTitle>
           
-          {/* User Info */}
-          <div className="flex items-center gap-3 py-3">
-            <Avatar className="h-16 w-16 border-2 border-primary/20">
-              <AvatarImage src={user?.profileImageUrl || undefined} alt={`${user?.firstName} ${user?.lastName}` || "User"} />
-              <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
-                {user ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase() : 'U'}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">{user ? `${user.firstName} ${user.lastName}` : "Guest User"}</h3>
-              <p className="text-sm text-muted-foreground">{user?.email || ""}</p>
-              <p className="text-xs text-muted-foreground capitalize mt-1">
-                {user?.role || "member"} Account
-              </p>
+          {/* User Info Card */}
+          <div className="bg-gradient-to-br from-primary/10 to-neon-purple/10 dark:from-primary/20 dark:to-neon-purple/20 rounded-2xl p-4 border border-primary/20">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <Avatar className="h-20 w-20 border-4 border-background shadow-lg">
+                  <AvatarImage src={user?.profileImageUrl || undefined} alt={`${user?.firstName} ${user?.lastName}` || "User"} />
+                  <AvatarFallback className="bg-primary text-primary-foreground font-bold text-2xl">
+                    {user ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase() : 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-neon-green dark:bg-neon-green rounded-full border-4 border-background" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-xl text-foreground">
+                  {user ? `${user.firstName} ${user.lastName}` : "Guest User"}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-0.5">{user?.email || ""}</p>
+                <div className="mt-2 inline-flex items-center gap-2 bg-primary/20 dark:bg-primary/30 px-3 py-1 rounded-full">
+                  <div className="w-2 h-2 bg-neon-green rounded-full animate-pulse" />
+                  <span className="text-xs font-semibold text-primary capitalize">
+                    {user?.role || "member"}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </SheetHeader>
 
-        <Separator className="my-4" />
+        {/* Theme Toggle */}
+        <div className="mt-6">
+          <button
+            onClick={toggleTheme}
+            className="w-full flex items-center justify-between p-4 rounded-2xl bg-muted/50 hover:bg-muted transition-all duration-200 active:scale-98"
+            data-testid="button-theme-toggle"
+          >
+            <div className="flex items-center gap-3">
+              {theme === 'light' ? (
+                <div className="p-2 bg-yellow-500/20 rounded-xl">
+                  <Sun className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
+                </div>
+              ) : (
+                <div className="p-2 bg-blue-500/20 rounded-xl">
+                  <Moon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+              )}
+              <div>
+                <span className="font-semibold text-foreground">Appearance</span>
+                <p className="text-xs text-muted-foreground capitalize">{theme} Mode</p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
+        </div>
 
-        {/* Push Notifications Toggle */}
-        <div className="py-2">
+        <Separator className="my-6" />
+
+        {/* Push Notifications */}
+        <div className="mb-4">
           <PushNotificationToggle />
         </div>
 
-        <Separator className="my-4" />
+        <Separator className="my-6" />
 
         {/* Menu Items */}
-        <div className="space-y-1 py-2">
+        <div className="space-y-2">
           {menuItems.map((item) => {
             const Icon = item.icon;
             return (
               <Button
                 key={item.testId}
                 variant="ghost"
-                className="w-full justify-start gap-3 h-12"
+                className={cn(
+                  "w-full justify-between h-14 rounded-2xl hover:bg-muted/50 transition-all duration-200 active:scale-98",
+                  "group"
+                )}
                 data-testid={item.testId}
               >
-                <Icon className="h-5 w-5 text-muted-foreground" />
-                <span>{item.label}</span>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-muted rounded-xl group-hover:bg-primary/10 transition-colors">
+                    <Icon className={cn("h-5 w-5", item.color)} />
+                  </div>
+                  <span className="font-medium">{item.label}</span>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
               </Button>
             );
           })}
         </div>
 
-        <Separator className="my-4" />
+        <Separator className="my-6" />
 
         {/* Logout Button */}
         <Button
           onClick={() => logoutMutation.mutate()}
           disabled={logoutMutation.isPending}
-          variant="destructive"
-          className="w-full gap-2 h-12"
+          variant="outline"
+          className="w-full h-14 rounded-2xl border-2 border-destructive/20 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all duration-200 active:scale-98 font-semibold mb-4"
           data-testid="button-logout"
         >
-          <LogOut className="h-5 w-5" />
+          <LogOut className="h-5 w-5 mr-2" />
           {logoutMutation.isPending ? "Logging out..." : "Log Out"}
         </Button>
+
+        <p className="text-center text-xs text-muted-foreground pb-2">
+          Idachi Fitness v1.0.0
+        </p>
       </SheetContent>
     </Sheet>
   );

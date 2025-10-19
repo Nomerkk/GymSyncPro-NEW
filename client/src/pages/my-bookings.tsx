@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import MemberSidebar from "@/components/ui/member-sidebar";
 import BottomNavigation from "@/components/ui/bottom-navigation";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Clock, User, Dumbbell, Users, X, Menu, Bell, LogOut } from "lucide-react";
+import { Calendar, Clock, User, Dumbbell, X, ChevronRight, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ClassBookingWithClass {
   id: string;
@@ -49,19 +50,7 @@ interface PtBookingWithTrainer {
 export default function MyBookings() {
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const handleLogout = async () => {
-    try {
-      await apiRequest("POST", "/api/logout");
-      queryClient.clear();
-      window.location.href = "/login";
-    } catch (error) {
-      console.error("Logout error:", error);
-      queryClient.clear();
-      window.location.href = "/login";
-    }
-  };
+  const [activeTab, setActiveTab] = useState("classes");
 
   const { data: classBookings, isLoading: loadingClasses } = useQuery<ClassBookingWithClass[]>({
     queryKey: ["/api/class-bookings"],
@@ -80,273 +69,273 @@ export default function MyBookings() {
 
   const notificationCount = notifications?.filter(n => !n.isRead).length || 0;
 
-  const handleCancelClassBooking = async (bookingId: string) => {
-    if (!confirm("Yakin ingin membatalkan booking class ini?")) {
-      return;
-    }
-
-    try {
+  const cancelClassMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
       await apiRequest("PUT", `/api/class-bookings/${bookingId}/cancel`);
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/class-bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
-      toast({
-        title: "Berhasil!",
-        description: "Booking class berhasil dibatalkan",
-      });
-    } catch (error: any) {
+      toast({ title: "Success", description: "Class booking cancelled" });
+    },
+    onError: () => {
       toast({
         title: "Error",
-        description: error.message || "Gagal membatalkan booking",
+        description: "Failed to cancel booking",
         variant: "destructive",
       });
+    },
+  });
+
+  const cancelPTMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      await apiRequest("PUT", `/api/pt-bookings/${bookingId}/cancel`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pt-bookings"] });
+      toast({ title: "Success", description: "PT session cancelled" });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to cancel PT session",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCancelClass = (bookingId: string) => {
+    if (confirm("Cancel this class booking?")) {
+      cancelClassMutation.mutate(bookingId);
     }
   };
 
-  const handleCancelPTBooking = async (bookingId: string) => {
-    if (!confirm("Yakin ingin membatalkan sesi PT ini?")) {
-      return;
-    }
-
-    try {
-      await apiRequest("PUT", `/api/pt-bookings/${bookingId}/cancel`);
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-bookings"] });
-      toast({
-        title: "Berhasil!",
-        description: "Sesi PT berhasil dibatalkan",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal membatalkan sesi PT",
-        variant: "destructive",
-      });
+  const handleCancelPT = (bookingId: string) => {
+    if (confirm("Cancel this PT session?")) {
+      cancelPTMutation.mutate(bookingId);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "booked":
-      case "confirmed":
-        return <Badge variant="default">{status === "booked" ? "Terdaftar" : "Dikonfirmasi"}</Badge>;
-      case "cancelled":
-        return <Badge variant="destructive">Dibatalkan</Badge>;
-      case "attended":
-      case "completed":
-        return <Badge variant="secondary">Selesai</Badge>;
-      case "pending":
-        return <Badge variant="outline">Menunggu</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
+    const variants: Record<string, { variant: "default" | "destructive" | "secondary" | "outline", label: string, color: string }> = {
+      booked: { variant: "default", label: "Booked", color: "bg-neon-green/10 text-neon-green border-neon-green/20" },
+      confirmed: { variant: "default", label: "Confirmed", color: "bg-neon-green/10 text-neon-green border-neon-green/20" },
+      cancelled: { variant: "destructive", label: "Cancelled", color: "bg-red-500/10 text-red-500 border-red-500/20" },
+      attended: { variant: "secondary", label: "Attended", color: "bg-muted text-muted-foreground border-border" },
+      completed: { variant: "secondary", label: "Completed", color: "bg-muted text-muted-foreground border-border" },
+      pending: { variant: "outline", label: "Pending", color: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-500 border-yellow-500/20" },
+    };
+
+    const config = variants[status] || { variant: "outline" as const, label: status, color: "" };
+    return (
+      <Badge variant={config.variant} className={cn("text-xs font-semibold border", config.color)}>
+        {config.label}
+      </Badge>
+    );
   };
 
   if (loadingClasses || loadingPT) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground font-medium">Loading bookings...</p>
+        </div>
       </div>
     );
   }
 
+  const activeClasses = classBookings?.filter(b => b.status === 'booked' || b.status === 'confirmed') || [];
+  const activePT = ptBookings?.filter(b => b.status === 'booked' || b.status === 'confirmed') || [];
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
-      <MemberSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar */}
-        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 lg:px-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
-              data-testid="button-toggle-sidebar"
-            >
-              <Menu className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-            </button>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">
-              My Bookings
-            </h1>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="relative"
-              data-testid="button-notifications"
-            >
-              <Bell className="h-5 w-5" />
-              {notificationCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">
-                  {notificationCount}
-                </span>
-              )}
-            </Button>
-            <Button
-              onClick={handleLogout}
-              variant="ghost"
-              size="sm"
-              data-testid="button-logout"
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto bg-muted/30 pb-20 md:pb-0">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-foreground">Booking Saya</h2>
-          <p className="text-muted-foreground mt-1">Lihat dan kelola semua booking Anda</p>
+    <div className="min-h-screen bg-background pb-20">
+      {/* Header */}
+      <header className="bg-gradient-to-br from-primary/10 via-neon-purple/5 to-background border-b border-border/50 sticky top-0 z-10 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <h1 className="text-2xl font-bold text-foreground mb-1">My Bookings</h1>
+          <p className="text-sm text-muted-foreground">
+            {activeClasses.length + activePT.length} active bookings
+          </p>
         </div>
+      </header>
 
-        {/* Class Bookings */}
-        <div className="mb-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="text-primary" size={20} />
-                Gym Class Bookings
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!classBookings || classBookings.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Users className="mx-auto mb-3" size={48} />
-                  <p className="text-lg font-medium">Belum Ada Booking Class</p>
-                  <p className="text-sm mt-1">Booking class akan muncul di sini</p>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50 p-1 rounded-2xl">
+            <TabsTrigger 
+              value="classes" 
+              className="rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-sm font-semibold"
+              data-testid="tab-classes"
+            >
+              <Dumbbell className="h-4 w-4 mr-2" />
+              Classes ({classBookings?.length || 0})
+            </TabsTrigger>
+            <TabsTrigger 
+              value="pt" 
+              className="rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-sm font-semibold"
+              data-testid="tab-pt"
+            >
+              <User className="h-4 w-4 mr-2" />
+              PT Sessions ({ptBookings?.length || 0})
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Class Bookings */}
+          <TabsContent value="classes" className="space-y-3 mt-0">
+            {!classBookings || classBookings.length === 0 ? (
+              <Card className="p-8 text-center border-border/50 bg-card/50 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-4 bg-muted rounded-full">
+                    <Dumbbell className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground mb-1">No Class Bookings</p>
+                    <p className="text-sm text-muted-foreground">
+                      Book your first class to get started!
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {classBookings.map((booking) => (
-                    <div
-                      key={booking.id}
-                      className="border border-border rounded-lg p-4 hover:shadow-md transition-shadow"
-                      data-testid={`class-booking-${booking.id}`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-foreground text-lg">
-                            {booking.gymClass.name}
-                          </h4>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Instruktur: {booking.gymClass.instructorName}
-                          </p>
-                          
-                          <div className="flex items-center gap-4 mt-3">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Calendar size={14} />
-                              <span>{format(new Date(booking.bookingDate), "dd MMM yyyy")}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Clock size={14} />
-                              <span>{booking.gymClass.schedule}</span>
-                            </div>
-                          </div>
+              </Card>
+            ) : (
+              classBookings.map((booking) => (
+                <Card 
+                  key={booking.id} 
+                  className={cn(
+                    "p-5 border-border/50 backdrop-blur-sm transition-all hover:shadow-md",
+                    booking.status === 'cancelled' ? "bg-muted/20 opacity-60" : "bg-card/50"
+                  )}
+                  data-testid={`booking-class-${booking.id}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-2 bg-neon-purple/10 rounded-xl">
+                          <Dumbbell className="h-4 w-4 text-neon-purple" />
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                          {getStatusBadge(booking.status)}
-                          {booking.status === "booked" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleCancelClassBooking(booking.id)}
-                              data-testid={`button-cancel-class-${booking.id}`}
-                            >
-                              <X size={16} className="mr-1" />
-                              Batal
-                            </Button>
-                          )}
+                        <h3 className="font-bold text-foreground">{booking.gymClass.name}</h3>
+                      </div>
+                      
+                      <div className="space-y-2 ml-10">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <User className="h-3.5 w-3.5" />
+                          <span>{booking.gymClass.instructorName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>{format(new Date(booking.bookingDate), "MMM dd, yyyy")}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" />
+                          <span>{booking.gymClass.schedule}</span>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* PT Bookings */}
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Dumbbell className="text-primary" size={20} />
-                Personal Trainer Sessions
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!ptBookings || ptBookings.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Dumbbell className="mx-auto mb-3" size={48} />
-                  <p className="text-lg font-medium">Belum Ada Sesi PT</p>
-                  <p className="text-sm mt-1">Sesi PT Anda akan muncul di sini</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {ptBookings.map((booking) => (
-                    <div
-                      key={booking.id}
-                      className="border border-border rounded-lg p-4 hover:shadow-md transition-shadow"
-                      data-testid={`pt-booking-${booking.id}`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-foreground text-lg">
-                            {booking.trainer.name}
-                          </h4>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {booking.trainer.specialization}
-                          </p>
-                          
-                          <div className="flex items-center gap-4 mt-3">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Calendar size={14} />
-                              <span>
-                                {format(new Date(booking.bookingDate), "dd MMM yyyy, HH:mm")}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Clock size={14} />
-                              <span>{booking.duration} menit</span>
-                            </div>
-                          </div>
-
-                          {booking.notes && (
-                            <p className="text-sm text-muted-foreground mt-2 bg-muted/30 rounded p-2">
-                              Note: {booking.notes}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          {getStatusBadge(booking.status)}
-                          {(booking.status === "pending" || booking.status === "confirmed") && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleCancelPTBooking(booking.id)}
-                              data-testid={`button-cancel-pt-${booking.id}`}
-                            >
-                              <X size={16} className="mr-1" />
-                              Batal
-                            </Button>
-                          )}
-                        </div>
+                      <div className="flex items-center gap-2 mt-4">
+                        {getStatusBadge(booking.status)}
+                        {booking.status === 'booked' || booking.status === 'confirmed' ? (
+                          <button
+                            onClick={() => handleCancelClass(booking.id)}
+                            disabled={cancelClassMutation.isPending}
+                            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 font-medium transition-colors"
+                            data-testid={`button-cancel-class-${booking.id}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            Cancel
+                          </button>
+                        ) : null}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-          </div>
-        </main>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-2" />
+                  </div>
+                </Card>
+              ))
+            )}
+          </TabsContent>
 
-        <BottomNavigation notificationCount={notificationCount} />
-      </div>
+          {/* PT Bookings */}
+          <TabsContent value="pt" className="space-y-3 mt-0">
+            {!ptBookings || ptBookings.length === 0 ? (
+              <Card className="p-8 text-center border-border/50 bg-card/50 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-4 bg-muted rounded-full">
+                    <User className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground mb-1">No PT Sessions</p>
+                    <p className="text-sm text-muted-foreground">
+                      Book a personal trainer session today!
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            ) : (
+              ptBookings.map((booking) => (
+                <Card 
+                  key={booking.id} 
+                  className={cn(
+                    "p-5 border-border/50 backdrop-blur-sm transition-all hover:shadow-md",
+                    booking.status === 'cancelled' ? "bg-muted/20 opacity-60" : "bg-card/50"
+                  )}
+                  data-testid={`booking-pt-${booking.id}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-2 bg-neon-green/10 rounded-xl">
+                          <User className="h-4 w-4 text-neon-green" />
+                        </div>
+                        <h3 className="font-bold text-foreground">{booking.trainer.name}</h3>
+                      </div>
+                      
+                      <div className="space-y-2 ml-10">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Dumbbell className="h-3.5 w-3.5" />
+                          <span>{booking.trainer.specialization}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>{format(new Date(booking.bookingDate), "MMM dd, yyyy")}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" />
+                          <span>{booking.duration} minutes</span>
+                        </div>
+                        {booking.notes && (
+                          <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                            <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                            <span className="line-clamp-2">{booking.notes}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-4">
+                        {getStatusBadge(booking.status)}
+                        {booking.status === 'booked' || booking.status === 'confirmed' ? (
+                          <button
+                            onClick={() => handleCancelPT(booking.id)}
+                            disabled={cancelPTMutation.isPending}
+                            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 font-medium transition-colors"
+                            data-testid={`button-cancel-pt-${booking.id}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            Cancel
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-2" />
+                  </div>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Bottom Navigation */}
+      <BottomNavigation notificationCount={notificationCount} />
     </div>
   );
 }
