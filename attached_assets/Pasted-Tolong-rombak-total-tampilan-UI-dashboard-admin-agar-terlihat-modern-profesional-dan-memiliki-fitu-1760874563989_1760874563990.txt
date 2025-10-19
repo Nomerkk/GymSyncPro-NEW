@@ -1,0 +1,122 @@
+Tolong rombak total tampilan UI dashboard admin agar terlihat modern, profesional, dan memiliki fitur Dark Mode & Light Mode dengan toggle.
+
+UI-nya harus mencerminkan suasana fitnes modern, energik, tapi tetap clean dan elegan — mirip dengan dashboard aplikasi teknologi seperti Vercel, Stripe, atau Notion, tapi dengan identitas khas gym.
+
+🎨 Konsep Desain
+
+Tema: Modern Tech Gym — kombinasi dark navy + neon green/purple accent.
+
+Gunakan font Inter atau Manrope.
+
+Dua mode tampilan:
+
+Light Mode: latar #f9fafb, teks gelap, aksen hijau atau ungu lembut.
+
+Dark Mode: latar #0f172a, teks terang, aksen neon hijau atau ungu.
+
+Transisi antar tema harus smooth (transition-colors duration-300).
+
+Elemen UI (cards, tombol, sidebar) punya rounded besar (rounded-2xl) dan shadow lembut.
+
+Gunakan ikon dari lucide-react atau react-icons.
+
+🧭 Sidebar Navigation (Hamburger Menu)
+
+Sidebar di sisi kiri dengan logo gym di bagian atas.
+
+Bisa collapse/expand lewat hamburger icon dengan animasi lembut.
+
+Saat collapse → hanya ikon.
+
+Saat expand → ikon + teks label.
+
+Gunakan efek hover lembut (gradien neon atau glow tipis).
+
+Sidebar menyesuaikan mode tema (dark/light).
+
+Tambahkan tombol “Contact Us” hijau di bagian bawah.
+
+Struktur menu:
+
+Dashboard
+
+Members
+
+Classes
+
+Trainers
+
+Plans
+
+PT Bookings
+
+Bookings
+
+Check-In
+
+Feedback
+
+Help Center
+
+📊 Dashboard Content (Untuk Admin Gym)
+
+Kartu statistik utama:
+
+Total Members
+
+Active Today
+
+Expiring Soon
+
+Monthly Revenue
+
+Tambahkan ikon kecil di setiap kartu (mis. 👤📅⚠️💰).
+
+Gunakan grid responsif (grid-cols-1 md:grid-cols-2 lg:grid-cols-4).
+
+Terapkan efek glassmorphism untuk kesan modern.
+
+Buat tabel atau daftar “Recent Check-Ins” dengan avatar member dan status membership (Silver, Gold, Platinum).
+
+Bisa tambahkan grafik kecil (line chart atau bar chart) untuk tren gym.
+
+⚙️ Fitur Teknis (React.js)
+
+Buat komponen modular:
+
+Sidebar.jsx
+
+Navbar.jsx
+
+DashboardCard.jsx
+
+ThemeToggle.jsx
+
+Layout.jsx
+
+Tambahkan Dark/Light mode toggle di navbar (ikon 🌞 / 🌙).
+
+Simpan preferensi tema di localStorage.
+
+Gunakan Tailwind dark: class, contoh:
+
+<div className="bg-white text-gray-900 dark:bg-[#0f172a] dark:text-gray-100 transition-colors duration-300">
+  ...
+</div>
+
+
+Sidebar dan konten utama harus responsif di semua perangkat (hamburger auto collapse di mobile).
+
+💡 Tujuan Akhir
+
+UI harus:
+
+Tampak seperti dashboard manajemen gym premium.
+
+Responsif, lembut, dan interaktif.
+
+Mencerminkan brand gym yang modern dan energik.
+
+Sidebar berisi semua menu penting (termasuk Check-In & Feedback).
+
+Memiliki fitur Dark/Light Mode toggle yang halus dan konsisten.
