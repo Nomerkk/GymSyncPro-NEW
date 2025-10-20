@@ -4,72 +4,60 @@
 @tailwind utilities;
 
 :root {
-  /* Light Mode - Clean & Visible */
-  --background: hsl(0, 0%, 97%);
-  --foreground: hsl(222, 47%, 11%);
-  --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(222, 47%, 11%);
-  --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(222, 47%, 11%);
-  --primary: hsl(142, 76%, 40%);
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(210, 30%, 93%);
-  --secondary-foreground: hsl(222, 47%, 15%);
-  --muted: hsl(210, 25%, 92%);
-  --muted-foreground: hsl(215, 20%, 35%);
-  --accent: hsl(142, 76%, 40%);
-  --accent-foreground: hsl(0, 0%, 100%);
-  --neon-green: hsl(142, 76%, 38%);
-  --neon-purple: hsl(271, 76%, 50%);
-  --destructive: hsl(0, 84%, 60%);
-  --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(214, 25%, 85%);
-  --input: hsl(214, 25%, 90%);
-  --ring: hsl(142, 76%, 40%);
-  --chart-1: hsl(142, 76%, 40%);
-  --chart-2: hsl(271, 76%, 50%);
-  --chart-3: hsl(38, 92%, 50%);
-  --chart-4: hsl(217, 91%, 60%);
-  --chart-5: hsl(340, 75%, 55%);
-  --radius: 1rem;
-}
-
-.dark {
-  /* Dark Mode - Dark Navy */
-  --background: hsl(220, 40%, 8%);
+  /* Permanent Dark Navy Theme */
+  --background: hsl(225, 59%, 11%);
   --foreground: hsl(0, 0%, 98%);
-  --card: hsl(220, 35%, 12%);
+  --card: hsl(225, 50%, 15%);
   --card-foreground: hsl(0, 0%, 98%);
-  --popover: hsl(220, 40%, 10%);
+  --popover: hsl(225, 55%, 13%);
   --popover-foreground: hsl(0, 0%, 98%);
-  --primary: hsl(142, 76%, 36%);
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(220, 30%, 18%);
+  
+  /* Neon Green Primary */
+  --primary: hsl(142, 76%, 45%);
+  --primary-foreground: hsl(225, 59%, 11%);
+  
+  /* Secondary with purple tint */
+  --secondary: hsl(225, 45%, 20%);
   --secondary-foreground: hsl(0, 0%, 98%);
-  --muted: hsl(220, 30%, 18%);
-  --muted-foreground: hsl(215, 20%, 65%);
-  --accent: hsl(142, 76%, 36%);
+  
+  --muted: hsl(225, 40%, 18%);
+  --muted-foreground: hsl(0, 0%, 70%);
+  
+  /* Neon Purple Accent */
+  --accent: hsl(271, 76%, 60%);
   --accent-foreground: hsl(0, 0%, 100%);
-  --neon-green: hsl(142, 76%, 45%);
-  --neon-purple: hsl(271, 76%, 60%);
-  --destructive: hsl(0, 62%, 30%);
-  --destructive-foreground: hsl(0, 0%, 98%);
-  --border: hsl(220, 30%, 20%);
-  --input: hsl(220, 30%, 18%);
-  --ring: hsl(142, 76%, 45%);
-  --chart-1: hsl(142, 76%, 45%);
+  
+  /* Neon colors for highlights */
+  --neon-green: hsl(142, 76%, 50%);
+  --neon-purple: hsl(271, 80%, 65%);
+  
+  --destructive: hsl(0, 70%, 50%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  
+  --border: hsl(225, 40%, 25%);
+  --input: hsl(225, 40%, 20%);
+  --ring: hsl(142, 76%, 50%);
+  
+  /* Chart colors with neon theme */
+  --chart-1: hsl(142, 76%, 50%);
   --chart-2: hsl(271, 76%, 60%);
   --chart-3: hsl(38, 92%, 50%);
   --chart-4: hsl(217, 91%, 60%);
   --chart-5: hsl(340, 75%, 55%);
+  
+  --radius: 1rem;
 }
 
 @layer base {
   * {
     @apply border-border;
-    transition-property: background-color, border-color, color, fill, stroke;
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 200ms;
+  }
+
+  html {
+    @apply bg-background;
   }
 
   body {
@@ -98,11 +86,11 @@
 
 @layer components {
   .glass-effect {
-    @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-800/50;
+    @apply bg-card/80 backdrop-blur-xl border border-border/50 shadow-lg;
   }
 
   .modern-card {
-    @apply bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300;
+    @apply bg-card border border-border rounded-xl shadow-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300;
   }
 
   .sidebar-item {
@@ -110,8 +98,7 @@
   }
 
   .sidebar-item-active {
-    @apply text-primary;
-    background-color: hsl(var(--primary) / 0.1);
+    @apply text-primary bg-primary/10 shadow-sm shadow-primary/20;
   }
 
   .sidebar-item-inactive {
@@ -128,10 +115,22 @@
 
   .gradient-border::before {
     content: '';
-    @apply absolute inset-0 rounded-lg p-[1px] bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500;
+    @apply absolute inset-0 rounded-lg p-[1px] bg-gradient-to-r from-neon-green via-neon-purple to-neon-green;
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
+  }
+
+  .neon-glow {
+    box-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+  }
+
+  .neon-glow-green {
+    box-shadow: 0 0 10px hsl(142, 76%, 50%), 0 0 20px hsl(142, 76%, 50%);
+  }
+
+  .neon-glow-purple {
+    box-shadow: 0 0 10px hsl(271, 80%, 65%), 0 0 20px hsl(271, 80%, 65%);
   }
 }
 
@@ -146,6 +145,10 @@
 
   .animate-scale-in {
     animation: scaleIn 0.2s ease-out;
+  }
+
+  .animate-pulse-subtle {
+    animation: pulseSubtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
   @keyframes fadeIn {
@@ -178,6 +181,15 @@
       opacity: 1;
     }
   }
+
+  @keyframes pulseSubtle {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
 }
 
 /* Scrollbar Styling */
@@ -191,14 +203,24 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+  @apply bg-muted rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-600;
+  @apply bg-muted-foreground/50;
 }
 
 /* Loading spinner */
 .spinner {
   @apply animate-spin w-5 h-5 border-2 border-primary border-t-transparent rounded-full;
+}
+
+/* Selection color */
+::selection {
+  @apply bg-primary/30 text-foreground;
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+  @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
 }
