@@ -395,7 +395,7 @@ export default function AdminCheckIns() {
           data-testid="modal-success-overlay"
         >
           <div 
-            className="bg-[#1E293B] rounded-2xl shadow-2xl border-2 border-[#10B981] w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-300"
+            className="bg-[#1E293B] rounded-2xl shadow-2xl border-2 border-[#10B981] w-full max-w-[400px] h-[500px] overflow-auto animate-in slide-in-from-bottom-4 duration-300"
             onClick={(e) => e.stopPropagation()}
             data-testid="modal-success-content"
           >
