@@ -321,12 +321,157 @@ pm2 restart idachi-fitness
 
 ## 💡 Tips Optimization
 
-1. **Enable gzip compression** di Nginx
-2. **Setup database connection pooling** untuk performa lebih baik
-3. **Enable caching** untuk static assets
-4. **Monitor memory usage** dengan PM2 atau monitoring tools
-5. **Setup automated backups** untuk database
-6. **Use CDN** untuk static assets jika traffic tinggi
+### 1. Enable Gzip & Brotli Compression di Nginx
+
+Edit file nginx config (`/etc/nginx/nginx.conf` atau site config):
+
+```nginx
+# Gzip Settings
+gzip on;
+gzip_vary on;
+gzip_proxied any;
+gzip_comp_level 6;
+gzip_types text/plain text/css text/xml text/javascript 
+           application/json application/javascript application/xml+rss 
+           application/rss+xml font/truetype font/opentype 
+           application/vnd.ms-fontobject image/svg+xml;
+
+# Brotli Settings (jika modul tersedia)
+brotli on;
+brotli_comp_level 6;
+brotli_types text/plain text/css text/xml text/javascript 
+             application/json application/javascript application/xml+rss 
+             application/rss+xml font/truetype font/opentype 
+             application/vnd.ms-fontobject image/svg+xml;
+```
+
+Restart Nginx:
+```bash
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### 2. Setup CDN untuk Static Assets
+
+#### Opsi A: Menggunakan Cloudflare (Gratis)
+
+1. **Signup di Cloudflare**:
+   - Daftar di https://cloudflare.com
+   - Tambahkan domain Anda
+   - Update nameserver domain ke Cloudflare
+
+2. **Enable Cache Everything**:
+   - Dashboard > Rules > Page Rules
+   - Create Rule: `yourdomain.com/dist/*` → Cache Level: Cache Everything
+   - Create Rule: `yourdomain.com/*.js` → Cache Level: Cache Everything
+   - Create Rule: `yourdomain.com/*.css` → Cache Level: Cache Everything
+
+3. **Enable Auto Minify**:
+   - Speed > Optimization
+   - Enable Auto Minify untuk JS, CSS, dan HTML
+
+4. **Enable Brotli**:
+   - Speed > Optimization
+   - Enable Brotli compression
+
+#### Opsi B: Menggunakan CDN Terpisah (BunnyCDN, KeyCDN, dll)
+
+1. **Setup Pull Zone**:
+   ```
+   Origin URL: https://yourdomain.com
+   Pull Zone URL: https://cdn.yourdomain.com
+   ```
+
+2. **Update Build Output untuk CDN**:
+   
+   Buat file `vite.config.cdn.ts`:
+   ```typescript
+   import { defineConfig } from "vite";
+   import react from "@vitejs/plugin-react";
+   import path from "path";
+   
+   export default defineConfig({
+     plugins: [react()],
+     base: "https://cdn.yourdomain.com/",
+     build: {
+       outDir: "dist/public",
+       assetsDir: "assets",
+       rollupOptions: {
+         output: {
+           manualChunks: {
+             vendor: ['react', 'react-dom'],
+             ui: ['@radix-ui/react-dialog', '@radix-ui/react-toast']
+           }
+         }
+       }
+     }
+   });
+   ```
+
+3. **Build dengan CDN Config**:
+   ```bash
+   vite build --config vite.config.cdn.ts
+   ```
+
+4. **Upload `dist/public` ke CDN Origin**
+
+### 3. Cache Control Headers di Nginx
+
+```nginx
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+
+location /dist/ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+
+location /assets/ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+```
+
+### 4. Database Connection Pooling
+
+Update connection di `.env`:
+```env
+DATABASE_URL=postgresql://user:pass@host:5432/db?pool_timeout=60&connect_timeout=10
+```
+
+### 5. Monitor Memory Usage
+
+```bash
+# Dengan PM2
+pm2 monit
+
+# Setup PM2 monitoring dashboard
+pm2 install pm2-server-monit
+```
+
+### 6. Automated Database Backups
+
+Buat cron job untuk backup otomatis:
+```bash
+# Edit crontab
+crontab -e
+
+# Tambahkan (backup setiap hari jam 2 pagi)
+0 2 * * * pg_dump -U username -d idachi_fitness > /backup/db_$(date +\%Y\%m\%d).sql
+```
+
+### 7. Production Build Optimization
+
+Install compression plugin:
+```bash
+npm install -D vite-plugin-compression
+```
+
+Saat build, assets akan otomatis di-compress menjadi `.gz` dan `.br` files.
+
+Nginx akan otomatis serve compressed version jika browser support.
 
 ## 📞 Bantuan
 

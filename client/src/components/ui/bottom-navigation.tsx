@@ -55,7 +55,7 @@ export default function BottomNavigation({ notificationCount = 0 }: BottomNaviga
       {/* Top accent line */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent" />
       
-      <div className="grid grid-cols-4 h-[72px] px-3 gap-1">
+      <div className="grid grid-cols-4 h-16 px-2 gap-1 py-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.active;

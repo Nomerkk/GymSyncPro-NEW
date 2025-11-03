@@ -15,6 +15,7 @@ import { apiRequest } from "@/lib/queryClient";
 import PushNotificationToggle from "@/components/push-notification-toggle";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface ProfileSheetProps {
   children: React.ReactNode;
@@ -25,6 +26,7 @@ interface ProfileSheetProps {
 export default function ProfileSheet({ children, open, onOpenChange }: ProfileSheetProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const logoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/logout"),
@@ -34,34 +36,23 @@ export default function ProfileSheet({ children, open, onOpenChange }: ProfileSh
   });
 
   const handleMenuClick = (action: string) => {
+    onOpenChange?.(false);
+    
     switch (action) {
       case "profile":
-        toast({
-          title: "My Profile",
-          description: "Profile page coming soon!",
-        });
-        setTimeout(() => onOpenChange?.(false), 300);
+        setTimeout(() => navigate("/my-profile"), 300);
         break;
       case "settings":
-        toast({
-          title: "Settings",
-          description: "Settings page coming soon!",
-        });
-        setTimeout(() => onOpenChange?.(false), 300);
+        setTimeout(() => navigate("/settings"), 300);
         break;
       case "terms":
-        toast({
-          title: "Terms & Conditions",
-          description: "Please contact admin for terms and conditions information.",
-        });
-        setTimeout(() => onOpenChange?.(false), 300);
+        setTimeout(() => navigate("/terms"), 300);
         break;
       case "help":
         toast({
           title: "Help & Support",
           description: "Need help? Contact us at support@idachifitness.com",
         });
-        setTimeout(() => onOpenChange?.(false), 300);
         break;
       default:
         break;

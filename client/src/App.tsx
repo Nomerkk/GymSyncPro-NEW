@@ -29,6 +29,9 @@ import MyBookings from "@/pages/my-bookings";
 import MyPtSessions from "@/pages/my-pt-sessions";
 import CheckInVerify from "@/pages/checkin-verify";
 import CookieSettings from "@/pages/cookie-settings";
+import MyProfile from "@/pages/my-profile";
+import Settings from "@/pages/settings";
+import Terms from "@/pages/terms";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -77,6 +80,9 @@ function Router() {
           <Route path="/checkout" component={Checkout} />
           <Route path="/my-bookings" component={MyBookings} />
           <Route path="/my-pt-sessions" component={MyPtSessions} />
+          <Route path="/my-profile" component={MyProfile} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/terms" component={Terms} />
           <Route path="/login">
             <Redirect to="/" />
           </Route>
