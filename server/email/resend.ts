@@ -1,48 +1,34 @@
 import { Resend } from 'resend';
 
-let connectionSettings: any;
+let resendClient: Resend | null = null;
+let fromEmail: string | null = null;
 
-async function getCredentials() {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+function getResendClient() {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY environment variable is required for email functionality');
   }
 
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=resend',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  if (!connectionSettings || (!connectionSettings.settings?.api_key)) {
-    throw new Error('Resend not connected');
+  if (!resendClient) {
+    resendClient = new Resend(process.env.RESEND_API_KEY);
+    fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
   }
-  return {apiKey: connectionSettings.settings.api_key, fromEmail: connectionSettings.settings.from_email};
+
+  return {
+    client: resendClient,
+    fromEmail: fromEmail!
+  };
 }
 
 export async function getUncachableResendClient() {
-  const { apiKey, fromEmail } = await getCredentials();
-  return {
-    client: new Resend(apiKey),
-    fromEmail: fromEmail || 'onboarding@resend.dev'
-  };
+  return getResendClient();
 }
 
 export async function sendPasswordResetEmail(toEmail: string, resetToken: string) {
   try {
     const { client, fromEmail } = await getUncachableResendClient();
     
-    const resetUrl = `${process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000'}/reset-password?token=${resetToken}`;
+    const baseUrl = process.env.APP_URL || 'http://localhost:5000';
+    const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
     
     console.log(`[Resend] Attempting to send password reset email to: ${toEmail}`);
     console.log(`[Resend] From email: ${fromEmail}`);
@@ -150,7 +136,7 @@ export async function sendInactivityReminderEmail(toEmail: string, memberName: s
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000'}" 
+            <a href="${process.env.APP_URL || 'http://localhost:5000'}" 
                style="background-color: #EAB308; color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 16px;">
               Booking Class Sekarang
             </a>
