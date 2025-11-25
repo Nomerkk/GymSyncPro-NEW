@@ -2,7 +2,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { notificationsService } from "@/services/notifications";
 import { Bell, Check, Trash2, CheckCheck } from "lucide-react";
 import { format } from "date-fns";
 import type { Notification } from "@shared/schema.ts";
@@ -20,30 +21,18 @@ export default function NotificationsSheet({ children, open, onOpenChange }: Not
   });
 
   const markAsReadMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("PUT", `/api/notifications/${id}/read`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-    },
+    mutationFn: (id: string) => notificationsService.markRead(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
   });
 
   const markAllAsReadMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("PUT", "/api/notifications/read-all");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-    },
+    mutationFn: () => notificationsService.markAllRead(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
   });
 
   const deleteNotificationMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/notifications/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-    },
+    mutationFn: (id: string) => notificationsService.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
   });
 
   const unreadCount = notifications?.filter(n => !n.isRead).length || 0;

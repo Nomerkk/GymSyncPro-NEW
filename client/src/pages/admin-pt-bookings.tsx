@@ -1,41 +1,19 @@
 import { useEffect, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import PageHeader from "@/components/layout/page-header";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AdminLayout from "@/components/ui/admin-layout";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Calendar, Clock, User, Search, CheckCircle, XCircle, Timer, Ban } from "lucide-react";
+import { usePTBookings, usePTBookingActions } from "@/hooks/usePTBookings";
+import { Calendar, Clock, User, Search, CheckCircle, XCircle, Timer } from "lucide-react";
 import { format } from "date-fns";
+import { getErrorMessage } from "@/types/adminDialogs";
 
-interface PTBooking {
-  id: string;
-  userId: string;
-  trainerId: string;
-  bookingDate: string;
-  duration: number;
-  sessionCount: number;
-  status: string;
-  notes?: string;
-  createdAt: string;
-  user: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone?: string;
-  };
-  trainer: {
-    id: string;
-    name: string;
-    specialization: string;
-  };
-}
+// Type moved to services layer
 
 export default function AdminPTBookings() {
   const { toast } = useToast();
@@ -51,44 +29,16 @@ export default function AdminPTBookings() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
       }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: bookings, isLoading: bookingsLoading } = useQuery<PTBooking[]>({
-    queryKey: ["/api/admin/pt-bookings"],
-    enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
-  });
+  const { data: bookings } = usePTBookings(isAuthenticated && user?.role === 'admin');
+  const { updateStatus } = usePTBookingActions();
 
-  const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      apiRequest("PUT", `/api/admin/pt-bookings/${id}`, { status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/pt-bookings"] });
-      toast({
-        title: "Success",
-        description: "PT booking status updated successfully",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update PT booking status",
-        variant: "destructive",
-      });
-    }
-  });
-
-  if (isLoading || bookingsLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Do not block rendering with loading spinners; show cached or empty data.
 
   if (!user || user.role !== 'admin') {
     return null;
@@ -127,7 +77,21 @@ export default function AdminPTBookings() {
   };
 
   const handleStatusChange = (bookingId: string, newStatus: string) => {
-    updateStatusMutation.mutate({ id: bookingId, status: newStatus });
+    updateStatus.mutate(
+      { id: bookingId, status: newStatus },
+      {
+        onSuccess: () => {
+          toast({ title: "Success", description: "PT booking status updated successfully" });
+        },
+        onError: (error: unknown) => {
+          toast({
+            title: "Error",
+            description: getErrorMessage(error, "Failed to update PT booking status"),
+            variant: "destructive",
+          });
+        },
+      }
+    );
   };
 
   const stats = {
@@ -141,12 +105,10 @@ export default function AdminPTBookings() {
   return (
     <AdminLayout user={user}>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">PT Bookings Management</h1>
-            <p className="text-muted-foreground">Kelola semua booking Personal Trainer</p>
-          </div>
-        </div>
+        <PageHeader
+          title={<span data-testid="text-page-title">PT Bookings Management</span>}
+          subtitle="Kelola semua booking Personal Trainer"
+        />
 
         <div className="grid gap-4 md:grid-cols-4">
           <Card data-testid="card-total-bookings">
@@ -301,7 +263,7 @@ export default function AdminPTBookings() {
                           <Select
                             value={booking.status}
                             onValueChange={(value) => handleStatusChange(booking.id, value)}
-                            disabled={updateStatusMutation.isPending}
+                            disabled={updateStatus.isPending}
                           >
                             <SelectTrigger className="w-[130px] ml-auto" data-testid={`select-status-${booking.id}`}>
                               <SelectValue />

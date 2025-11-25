@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMemberPTSessionPackages, useMemberPTSessionAttendance, useMemberPTSessionActions } from "@/hooks/usePTSessions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -17,81 +16,29 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  AlertCircle,
+  
   Plus,
-  ChevronRight,
 } from "lucide-react";
 import { format } from "date-fns";
+import { getErrorMessage } from "@/lib/errors";
+import type { PTSessionPackage } from "@/services/ptSessions";
 
 export default function MyPtSessions() {
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
-  const [selectedPackage, setSelectedPackage] = useState<any>(null);
+  const [selectedPackage, setSelectedPackage] = useState<PTSessionPackage | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [sessionDate, setSessionDate] = useState("");
   const [sessionNotes, setSessionNotes] = useState("");
 
   // Fetch PT session packages
-  const { data: packages, isLoading: packagesLoading } = useQuery<any[]>({
-    queryKey: ["/api/pt-session-packages"],
-    enabled: isAuthenticated,
-  });
+  const { data: packages, isLoading: packagesLoading } = useMemberPTSessionPackages(isAuthenticated);
 
   // Fetch PT session attendance
-  const { data: sessions, isLoading: sessionsLoading } = useQuery<any[]>({
-    queryKey: ["/api/pt-session-attendance"],
-    enabled: isAuthenticated,
-  });
+  const { data: sessions, isLoading: sessionsLoading } = useMemberPTSessionAttendance(isAuthenticated);
 
-  // Schedule session mutation
-  const scheduleSessionMutation = useMutation({
-    mutationFn: async (data: { packageId: string; sessionDate: string; notes?: string }) => {
-      const response = await apiRequest("POST", "/api/pt-session-attendance", data);
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-session-attendance"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-session-packages"] });
-      setShowScheduleModal(false);
-      setSessionDate("");
-      setSessionNotes("");
-      setSelectedPackage(null);
-      toast({
-        title: "Berhasil",
-        description: "Sesi PT berhasil dijadwalkan!",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal menjadwalkan sesi",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Check-in mutation
-  const checkInMutation = useMutation({
-    mutationFn: async (sessionId: string) => {
-      const response = await apiRequest("PUT", `/api/pt-session-attendance/${sessionId}/check-in`, {});
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-session-attendance"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-session-packages"] });
-      toast({
-        title: "Berhasil",
-        description: "Check-in berhasil!",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal check-in",
-        variant: "destructive",
-      });
-    },
-  });
+  // Member PT session actions
+  const { schedule: scheduleSessionMutation, checkIn: checkInMutation } = useMemberPTSessionActions();
 
   const handleScheduleSession = () => {
     if (!selectedPackage || !sessionDate) {
@@ -107,28 +54,42 @@ export default function MyPtSessions() {
       packageId: selectedPackage.id,
       sessionDate,
       notes: sessionNotes,
+    }, {
+      onSuccess: () => {
+        setShowScheduleModal(false);
+        setSessionDate("");
+        setSessionNotes("");
+        setSelectedPackage(null);
+        toast({ title: "Berhasil", description: "Sesi PT berhasil dijadwalkan!" });
+      },
+      onError: (error: unknown) => toast({ title: "Error", description: getErrorMessage(error, "Gagal menjadwalkan sesi"), variant: "destructive" })
     });
   };
 
   const handleCheckIn = (sessionId: string) => {
-    checkInMutation.mutate(sessionId);
+    checkInMutation.mutate(sessionId, {
+      onSuccess: () => toast({ title: "Berhasil", description: "Check-in berhasil!" }),
+      onError: (error: unknown) => toast({ title: "Error", description: getErrorMessage(error, "Gagal check-in"), variant: "destructive" })
+    });
   };
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { variant: any; label: string }> = {
-      scheduled: { variant: "default", label: "Dijadwalkan" },
+    const statusMap: Record<string, { variant: BadgeProps["variant"]; label: string }> = {
+      scheduled: { variant: "secondary", label: "Dijadwalkan" },
       completed: { variant: "default", label: "Selesai" },
       cancelled: { variant: "destructive", label: "Dibatalkan" },
       no_show: { variant: "destructive", label: "Tidak Hadir" },
     };
     const config = statusMap[status] || { variant: "default", label: status };
-    return <Badge variant={config.variant as any}>{config.label}</Badge>;
+    return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
   if (packagesLoading || sessionsLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <Navigation user={user} />
+        {user && (
+          <Navigation user={{ firstName: user.firstName, lastName: user.lastName, profileImageUrl: user.profileImageUrl ?? undefined }} />
+        )}
         <div className="pt-16 pb-20 px-4">
           <div className="flex items-center justify-center h-64">
             <div className="h-8 w-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin" />
@@ -139,9 +100,11 @@ export default function MyPtSessions() {
     );
   }
 
+  if (!user) return null;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Navigation user={user} />
+      <Navigation user={{ firstName: user.firstName, lastName: user.lastName, profileImageUrl: user.profileImageUrl ?? undefined }} />
       <div className="pt-16 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -167,9 +130,9 @@ export default function MyPtSessions() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg">{pkg.trainer.name}</CardTitle>
+                        <CardTitle className="text-lg">{pkg.trainer?.name || ''}</CardTitle>
                         <CardDescription className="mt-1">
-                          {pkg.trainer.specialization}
+                          {pkg.trainer?.specialization || ''}
                         </CardDescription>
                       </div>
                       <Badge variant={pkg.remainingSessions > 0 ? "default" : "secondary"}>
@@ -252,7 +215,7 @@ export default function MyPtSessions() {
                         
                         <div className="space-y-1">
                           <p className="font-semibold text-gray-900 dark:text-white">
-                            {session.trainer.name}
+                            {session.trainer?.name || ""}
                           </p>
                           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <Clock className="h-4 w-4" />
@@ -314,7 +277,7 @@ export default function MyPtSessions() {
             {selectedPackage && (
               <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
                 <p className="font-semibold text-gray-900 dark:text-white">
-                  {selectedPackage.trainer.name}
+                  {selectedPackage.trainer?.name || ""}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   Sisa sesi: {selectedPackage.remainingSessions}

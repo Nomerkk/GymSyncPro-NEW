@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { whatsappService } from "@/services/whatsapp";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 interface MemberInfo {
   id: string;
@@ -34,7 +35,7 @@ export default function AdminWhatsappDialog({ open, onOpenChange, member }: Admi
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (!member) throw new Error("Member tidak ditemukan");
-      return await apiRequest("POST", "/api/admin/whatsapp/send", {
+      await whatsappService.send({
         memberId: member.id,
         message,
       });
@@ -43,8 +44,8 @@ export default function AdminWhatsappDialog({ open, onOpenChange, member }: Admi
       toast({ title: "Terkirim", description: "Pesan WhatsApp berhasil dikirim" });
       onOpenChange(false);
     },
-    onError: (err: any) => {
-      toast({ title: "Gagal", description: err?.message || "Gagal mengirim pesan", variant: "destructive" });
+    onError: (err) => {
+      toast({ title: "Gagal", description: getErrorMessage(err, "Gagal mengirim pesan"), variant: "destructive" });
     }
   });
 

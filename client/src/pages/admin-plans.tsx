@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import AdminLayout from "@/components/ui/admin-layout";
 import AdminMembershipPlanDialog from "@/components/admin-membership-plan-dialog";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, Edit, Trash2, Check, DollarSign, Calendar } from "lucide-react";
+import PageHeader from "@/components/layout/page-header";
+import { useMembershipPlans, useMembershipPlanActions } from "@/hooks/useMembershipPlans";
+import { Plus, Edit, Trash2, Check, DollarSign } from "lucide-react";
 import type { MembershipPlan } from "@shared/schema.ts";
 
 export default function AdminPlans() {
@@ -25,31 +26,22 @@ export default function AdminPlans() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
       }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: dashboardData } = useQuery<any>({
+  interface AdminDashboardStats { expiringSoon?: number }
+  const { data: dashboardData } = useQuery<{ stats?: AdminDashboardStats }>({
     queryKey: ["/api/admin/dashboard"],
     enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
   });
 
-  const { data: membershipPlans } = useQuery<MembershipPlan[]>({
-    queryKey: ["/api/admin/membership-plans"],
-    enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
-  });
+  const { data: membershipPlans } = useMembershipPlans(isAuthenticated && user?.role === 'admin');
+  const { remove } = useMembershipPlanActions();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Do not block rendering with a loading spinner; rely on cached data.
 
   if (!user || user.role !== 'admin') {
     return null;
@@ -73,17 +65,15 @@ export default function AdminPlans() {
     }
 
     try {
-      await apiRequest("DELETE", `/api/admin/membership-plans/${planId}`);
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/membership-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/membership-plans"] });
+      await remove.mutateAsync(planId);
       toast({
         title: "Success!",
         description: "Membership plan has been deleted",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete membership plan",
+        description: (error && typeof error === 'object' && 'message' in error) ? String((error as { message?: unknown }).message) : "Failed to delete membership plan",
         variant: "destructive",
       });
     }
@@ -92,21 +82,20 @@ export default function AdminPlans() {
   return (
     <AdminLayout user={user} notificationCount={stats.expiringSoon || 0}>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Membership Plans</h1>
-            <p className="text-muted-foreground mt-1">Manage membership plans and pricing</p>
-          </div>
-          <Button 
-            className="gym-gradient text-white" 
-            onClick={handleAddPlan}
-            data-testid="button-add-plan"
-          >
-            <Plus className="mr-2" size={16} />
-            Add New Plan
-          </Button>
-        </div>
+        <PageHeader
+          title="Membership Plans"
+          subtitle="Manage membership plans and pricing"
+          actions={
+            <Button
+              className="gym-gradient text-white"
+              onClick={handleAddPlan}
+              data-testid="button-add-plan"
+            >
+              <Plus className="mr-2" size={16} />
+              Add New Plan
+            </Button>
+          }
+        />
 
         {/* Plans Grid */}
         {!membershipPlans || membershipPlans.length === 0 ? (

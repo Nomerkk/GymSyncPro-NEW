@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,10 @@ import AdminLayout from "@/components/ui/admin-layout";
 import { Clock, Activity, CalendarCheck, Sparkles, Camera, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Html5Qrcode } from "html5-qrcode";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getErrorMessage } from "@/lib/errors";
+import { useAdminCheckinActions } from "@/hooks/useCheckins";
+import { checkinsService } from "@/services/checkins";
+import type { PreviewCheckInData, CheckinValidationResult } from "@/services/checkins";
 
 interface CheckInRecord {
   id: string;
@@ -28,6 +31,16 @@ interface CheckInRecord {
     };
   };
 }
+interface AdminDashboardData { stats?: { expiringSoon?: number; activeToday?: number } }
+interface ApprovalState {
+  open: boolean;
+  qrCode: string;
+  user: PreviewCheckInData['user'] | null;
+  membership: PreviewCheckInData['membership'] | null;
+  lockerNumber: string;
+  lastCheckIn: PreviewCheckInData['lastCheckIn'] | null;
+  gender: "male" | "female" | null;
+}
 
 export default function AdminCheckIns() {
   const { toast } = useToast();
@@ -37,6 +50,9 @@ export default function AdminCheckIns() {
   const [cameraError, setCameraError] = useState("");
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef<boolean>(false);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const lastScanAtRef = useRef<number>(0);
+  const lastCodeRef = useRef<string | null>(null);
   const scannerDivId = "auto-qr-scanner";
 
   useEffect(() => {
@@ -47,84 +63,30 @@ export default function AdminCheckIns() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
       }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: dashboardData } = useQuery<any>({
+  const { data: dashboardData } = useQuery<AdminDashboardData>({
     queryKey: ["/api/admin/dashboard"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
   });
 
-  const { data: recentCheckIns, refetch: refetchCheckIns } = useQuery<CheckInRecord[]>({
+  const { data: recentCheckIns } = useQuery<CheckInRecord[]>({
     queryKey: ["/api/admin/checkins"],
     enabled: isAuthenticated && user?.role === 'admin',
     retry: false,
     refetchInterval: 10000,
   });
 
-  // Step 1: preview the member info (no creation)
-  const previewMutation = useMutation({
-    mutationFn: async (code: string) => {
-      const res = await apiRequest("POST", "/api/admin/checkin/preview", { qrCode: code });
-      const ct = res.headers.get("content-type") || "";
-      if (!ct.includes("application/json")) {
-        const text = await res.text();
-        throw new Error(text && text.startsWith("<!DOCTYPE") ? "Sesi admin berakhir atau rute tidak tersedia. Refresh halaman dan coba lagi." : (text || "Respon tidak valid dari server"));
-      }
-      return await res.json();
-    },
-    onSuccess: (data) => {
-      if (!data?.success) {
-        toast({ title: "Validasi Gagal", description: data?.message || "QR tidak valid", variant: "destructive" });
-        processingRef.current = false;
-        return;
-      }
-      setApprovalState({
-        open: true,
-        qrCode: data.qrCode,
-        user: data.user,
-        membership: data.membership,
-        lastCheckIn: data.lastCheckIn,
-      });
-      stopScanner();
-    },
-    onError: (error: any) => {
-      toast({ title: "Validasi Gagal", description: error.message || "QR code tidak valid atau sudah expired", variant: "destructive" });
-      setTimeout(() => { processingRef.current = false; }, 1000);
-    },
-  });
+  // Step 1 & 2 mutations from centralized hook
+  const { approve: approveMutation } = useAdminCheckinActions();
 
   // Step 2: approve to create the check-in
-  const approveMutation = useMutation({
-    mutationFn: async (payload: { qrCode: string; lockerNumber?: string }) => {
-      const res = await apiRequest("POST", "/api/admin/checkin/approve", payload);
-      const ct = res.headers.get("content-type") || "";
-      if (!ct.includes("application/json")) {
-        const text = await res.text();
-        throw new Error(text && text.startsWith("<!DOCTYPE") ? "Sesi admin berakhir atau rute tidak tersedia. Refresh halaman dan coba lagi." : (text || "Respon tidak valid dari server"));
-      }
-      return await res.json();
-    },
-    onSuccess: (data) => {
-      if (!data?.success) {
-        toast({ title: "Gagal", description: data?.message || "Tidak bisa membuat check-in", variant: "destructive" });
-        return;
-      }
-      // Close confirmation and resume scanning without a success modal
-      setApprovalState((prev: any) => ({ ...prev, open: false, lockerNumber: '' }));
-      refetchCheckIns();
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/checkins"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
-      setTimeout(() => { startScanner(); }, 600);
-    },
-    onError: (error: any) => {
-      toast({ title: "Gagal", description: error.message || "Tidak bisa menyetujui check-in", variant: "destructive" });
-    },
-  });
+  // The approveCheckIn function will now use the hook's approve method
 
   const startScanner = async () => {
     try {
@@ -150,6 +112,11 @@ export default function AdminCheckIns() {
             return;
           }
           
+          // debounce rapid fires
+          const now = Date.now();
+          if (now - lastScanAtRef.current < 300) return;
+          lastScanAtRef.current = now;
+
           processingRef.current = true;
           
           let qrCodeValue = decodedText;
@@ -160,12 +127,53 @@ export default function AdminCheckIns() {
             const parts = decodedText.split('/');
             qrCodeValue = parts[parts.length - 1] || decodedText;
           }
-          
-          previewMutation.mutate(qrCodeValue);
+          // de-duplicate same code
+          if (lastCodeRef.current === qrCodeValue) {
+            processingRef.current = false;
+            return;
+          }
+          lastCodeRef.current = qrCodeValue;
+
+          // Abort any in-flight preview
+          if (requestControllerRef.current) {
+            requestControllerRef.current.abort();
+          }
+          const controller = new AbortController();
+          requestControllerRef.current = controller;
+
+          const isAbort = (e: unknown) => (
+            e instanceof DOMException && e.name === 'AbortError'
+          ) || (
+            typeof e === 'object' && e !== null && 'name' in e && (e as { name?: string }).name === 'AbortError'
+          );
+
+          checkinsService.preview(qrCodeValue, { signal: controller.signal })
+            .then((data) => {
+              // Stop scanner while approving
+              stopScanner();
+              setApprovalState({
+                open: true,
+                qrCode: qrCodeValue,
+                user: data?.user || null,
+                membership: data?.membership || null,
+                lockerNumber: '',
+                lastCheckIn: data?.lastCheckIn || null,
+                gender: null,
+              });
+            })
+            .catch((error) => {
+              if (isAbort(error)) {
+                return; // ignore
+              }
+              toast({ title: "Preview Gagal", description: getErrorMessage(error, "QR code tidak valid"), variant: "destructive" });
+            })
+            .finally(() => {
+              processingRef.current = false;
+            });
         },
         () => {}
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error("Error starting scanner:", err);
       setCameraError("Tidak dapat mengakses kamera. Pastikan izin kamera sudah diberikan.");
       setIsScanning(false);
@@ -199,6 +207,9 @@ export default function AdminCheckIns() {
         if (scannerRef.current) {
           stopScanner();
         }
+        if (requestControllerRef.current) {
+          requestControllerRef.current.abort();
+        }
       };
     }
   }, [isAuthenticated, user]);
@@ -209,12 +220,42 @@ export default function AdminCheckIns() {
     };
   }, []);
 
-  const [approvalState, setApprovalState] = useState<any>({ open: false, qrCode: '', user: null, membership: null, lockerNumber: '', lastCheckIn: null });
+  const [approvalState, setApprovalState] = useState<ApprovalState>({ open: false, qrCode: '', user: null, membership: null, lockerNumber: '', lastCheckIn: null, gender: null });
+
+  // Auto-apply gender based on saved member profile preference (by email)
+  useEffect(() => {
+    if (!approvalState.open) return;
+    const email = approvalState.user?.email?.toLowerCase();
+    if (!email) return;
+    try {
+      const saved = localStorage.getItem(`admin.genderPref.${email}`);
+      if (saved === 'male' || saved === 'female') {
+        setApprovalState((p) => ({ ...p, gender: saved }));
+      }
+    } catch {}
+  }, [approvalState.open, approvalState.user?.email]);
 
   const approveCheckIn = () => {
     if (!approvalState.qrCode) return;
-    approveMutation.mutate({ qrCode: approvalState.qrCode, lockerNumber: approvalState.lockerNumber });
+    approveMutation.mutate(
+      { qrCode: approvalState.qrCode, lockerNumber: approvalState.lockerNumber, gender: approvalState.gender ?? undefined },
+      {
+        onSuccess: (data: CheckinValidationResult) => {
+          toast({ title: "Check-in Berhasil", description: data?.message || "Member berhasil check-in" });
+          setApprovalState((p) => ({ ...p, open: false }));
+          processingRef.current = false;
+          startScanner(); // resume scanning
+        },
+        onError: (error) => {
+          toast({ title: "Gagal Menyetujui", description: getErrorMessage(error, "Terjadi kesalahan"), variant: "destructive" });
+          processingRef.current = false;
+          startScanner();
+        }
+      }
+    );
   };
+
+  // Locker number: keep unchanged per request – no validation/masking
 
   if (isLoading) {
     return (
@@ -388,7 +429,7 @@ export default function AdminCheckIns() {
                 </div>
                 {/* Rows */}
                 <div className="max-h-[480px] overflow-auto divide-y divide-gray-800">
-                  {recentCheckIns.map((checkin, idx) => (
+                  {recentCheckIns.map((checkin) => (
                     <div
                       key={checkin.id}
                       className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center px-4 py-3 bg-[#0B1220] hover:bg-[#0B1220]/90 transition-colors"
@@ -454,7 +495,7 @@ export default function AdminCheckIns() {
 
       {/* Approve Check-in Dialog - redesigned wide confirmation card */}
       {approvalState.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setApprovalState((p: any) => ({ ...p, open: false }))}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setApprovalState((p) => ({ ...p, open: false }))}>
           <div className="bg-white dark:bg-[#0F172A] rounded-3xl w-full max-w-3xl shadow-2xl border border-gray-700 overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-gray-700/60 bg-gradient-to-r from-emerald-600/20 to-transparent">
               <h3 className="text-lg font-bold text-white">Konfirmasi Check-in</h3>
@@ -464,7 +505,7 @@ export default function AdminCheckIns() {
               <div className="space-y-3">
                 <div className="w-full aspect-[4/5] rounded-xl overflow-hidden bg-[#1E293B] border border-gray-700">
                   {approvalState.user?.profileImageUrl ? (
-                    <img src={approvalState.user.profileImageUrl} alt="Foto Member" className="w-full h-full object-cover" />
+                    <img src={approvalState.user.profileImageUrl} alt="Foto Member" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <div className="w-full h-full grid place-items-center text-gray-400 text-sm">No Photo</div>
                   )}
@@ -475,9 +516,38 @@ export default function AdminCheckIns() {
                     type="text"
                     placeholder="Contoh: 27"
                     value={approvalState.lockerNumber || ''}
-                    onChange={(e) => setApprovalState((p: any) => ({ ...p, lockerNumber: e.target.value }))}
-                    className="mt-1 w-full rounded-md border border-gray-700 bg-[#0F172A] px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    onChange={(e) => {
+                      setApprovalState((p) => ({ ...p, lockerNumber: e.target.value }));
+                    }}
+                    className={"mt-1 w-full rounded-md border border-gray-700 bg-[#0F172A] px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/60"}
                   />
+                </div>
+                <div className="bg-[#0B1220] rounded-xl p-3 border border-gray-700">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-400">Gender</div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setApprovalState((p) => ({ ...p, gender: 'male' }));
+                        const email = approvalState.user?.email?.toLowerCase();
+                        if (email) localStorage.setItem(`admin.genderPref.${email}`, 'male');
+                      }}
+                      className={`px-3 py-1.5 rounded-md border ${approvalState.gender === 'male' ? 'border-blue-500 bg-blue-500/10 text-blue-400' : 'border-gray-700 text-gray-300'}`}
+                    >
+                      Male
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setApprovalState((p) => ({ ...p, gender: 'female' }));
+                        const email = approvalState.user?.email?.toLowerCase();
+                        if (email) localStorage.setItem(`admin.genderPref.${email}`, 'female');
+                      }}
+                      className={`px-3 py-1.5 rounded-md border ${approvalState.gender === 'female' ? 'border-pink-500 bg-pink-500/10 text-pink-400' : 'border-gray-700 text-gray-300'}`}
+                    >
+                      Female
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="space-y-5">
@@ -505,7 +575,7 @@ export default function AdminCheckIns() {
                     <div className="grid grid-cols-2 gap-3 mt-3 text-sm">
                       <div className="space-y-0.5">
                         <div className="text-[11px] text-gray-400">Mulai</div>
-                        <div className="font-semibold text-white">{format(new Date(approvalState.membership.startDate), 'dd MMM yyyy')}</div>
+                        <div className="font-semibold text-white">{approvalState.membership.startDate ? format(new Date(approvalState.membership.startDate), 'dd MMM yyyy') : '-'}</div>
                       </div>
                       <div className="space-y-0.5">
                         <div className="text-[11px] text-gray-400">Berakhir</div>
@@ -531,7 +601,7 @@ export default function AdminCheckIns() {
               </div>
             </div>
             <div className="px-6 py-5 border-t border-gray-700/60 flex justify-end gap-2 bg-[#0B1220]">
-              <Button variant="outline" onClick={() => setApprovalState((p: any) => ({ ...p, open: false }))}>Batal</Button>
+              <Button variant="outline" onClick={() => setApprovalState((p) => ({ ...p, open: false }))}>Batal</Button>
               <Button onClick={approveCheckIn} disabled={approveMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500">
                 {approveMutation.isPending ? 'Menyetujui...' : 'Setujui & Simpan'}
               </Button>

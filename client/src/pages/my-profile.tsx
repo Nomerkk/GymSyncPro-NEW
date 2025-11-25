@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, Edit, Mail, Phone, User, Calendar, MapPin, LogOut } from "lucide-react";
+import { ArrowLeft, Camera, Edit, Mail, Phone, User, Calendar, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,28 +6,17 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 export default function MyProfile() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const logoutMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/logout", {});
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({ title: "Logout berhasil" });
-      navigate("/login");
-    },
-    onError: (error: any) => {
-      toast({ title: "Logout gagal", description: error?.message || "Silakan coba lagi", variant: "destructive" });
-    },
-  });
+  const { logout } = useAuthActions();
+  const logoutMutation = logout;
 
   if (!user) {
     return null;
@@ -207,7 +196,15 @@ export default function MyProfile() {
           <Button
             variant="destructive"
             className="w-full h-12 font-semibold"
-            onClick={() => logoutMutation.mutate()}
+            onClick={() => logoutMutation.mutate(undefined, {
+              onSuccess: () => {
+                toast({ title: "Logout berhasil" });
+                navigate("/login");
+              },
+              onError: (error: unknown) => {
+                toast({ title: "Logout gagal", description: getErrorMessage(error, "Silakan coba lagi"), variant: "destructive" });
+              }
+            })}
             disabled={logoutMutation.isPending}
             data-testid="button-logout"
           >

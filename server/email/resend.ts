@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { env } from '../config/index';
 
 // Maintain independent clients for different email streams to prevent config clashes
 let resendClientDefault: Resend | null = null;
@@ -10,11 +11,11 @@ let fromEmailAdmin: string | null = null;
 let fromEmailVerification: string | null = null;
 
 function ensureDefaultClient() {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = env.resend.apiKey;
   if (!apiKey) throw new Error('RESEND_API_KEY environment variable is required for email functionality');
   if (!resendClientDefault) {
     resendClientDefault = new Resend(apiKey);
-    fromEmailDefault = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    fromEmailDefault = env.resend.defaultFrom;
   }
   return { client: resendClientDefault!, fromEmail: fromEmailDefault! };
 }
@@ -25,33 +26,29 @@ export async function getUncachableResendClient() {
 }
 
 export function getResendClientForAdmin() {
-  const apiKey = process.env.RESEND_API_KEY_ADMIN || process.env.RESEND_API_KEY;
+  const apiKey = env.resend.adminApiKey || env.resend.apiKey;
   if (!apiKey) throw new Error('RESEND_API_KEY or RESEND_API_KEY_ADMIN is required');
   if (!resendClientAdmin) {
     resendClientAdmin = new Resend(apiKey);
-    fromEmailAdmin = process.env.RESEND_FROM_EMAIL_ADMIN
-      || process.env.RESEND_FROM_EMAIL
-      || 'onboarding@resend.dev';
+    fromEmailAdmin = env.resend.adminFrom;
   }
-  const replyTo = process.env.RESEND_REPLY_TO_ADMIN || undefined;
+  const replyTo = env.resend.adminReplyTo || undefined;
   return { client: resendClientAdmin!, fromEmail: fromEmailAdmin!, replyTo };
 }
 
 export function getResendClientForVerification() {
-  const apiKey = process.env.RESEND_API_KEY_VERIFICATION || process.env.RESEND_API_KEY;
+  const apiKey = env.resend.verificationApiKey || env.resend.apiKey;
   if (!apiKey) throw new Error('RESEND_API_KEY or RESEND_API_KEY_VERIFICATION is required');
   if (!resendClientVerification) {
     resendClientVerification = new Resend(apiKey);
-    fromEmailVerification = process.env.RESEND_FROM_EMAIL_VERIFICATION
-      || process.env.RESEND_FROM_EMAIL
-      || 'onboarding@resend.dev';
+    fromEmailVerification = env.resend.verificationFrom;
   }
   return { client: resendClientVerification!, fromEmail: fromEmailVerification! };
 }
 
 // Resolve base app URL strictly from environment or fallback to localhost
 export function getAppBaseUrl() {
-  return process.env.APP_URL || 'http://localhost:5000';
+  return env.appUrl;
 }
 
 // Convert plain text to safe minimal HTML (escape + newline -> <br/>)

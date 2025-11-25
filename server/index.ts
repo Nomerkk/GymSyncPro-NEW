@@ -1,13 +1,15 @@
-import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
-import { fileURLToPath } from 'url';
 import path from 'path';
+import { env } from "./config/index";
 
-const __dirname = process.cwd();
+// Use a separate variable for project root to avoid redeclaring Node's built-in __dirname.
+// Node injects __dirname as a parameter in the CommonJS wrapper, so declaring it again causes a runtime SyntaxError.
+// We want the project root (cwd) rather than the compiled dist/ directory path.
+const projectRoot = process.cwd();
 
 const app = express();
 // Enable gzip compression for all responses (production and dev)
@@ -16,7 +18,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Serve uploaded files statically with reasonable caching
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+app.use('/uploads', express.static(path.join(projectRoot, 'uploads'), {
   maxAge: '7d',
   immutable: false,
 }));
@@ -80,7 +82,7 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  const nodeEnv = (process.env.NODE_ENV || app.get("env") || "development").toLowerCase();
+  const nodeEnv = env.nodeEnv || (app.get("env") as string) || "development";
   log(`NODE_ENV detected: ${nodeEnv}`);
 
   if (nodeEnv !== "production") {
@@ -99,7 +101,7 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
+  const port = env.port;
 
   // Helpful error message if port is already in use
   server.on('error', (err: any) => {
@@ -121,14 +123,11 @@ app.use((req, res, next) => {
   }, () => {
     log(`serving on port ${port}`);
     // Log basic integrations status (no secrets)
-  const resendConfigured = Boolean(process.env.RESEND_API_KEY);
-  const fromEmailDefault = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-  const fromEmailAdmin = process.env.RESEND_FROM_EMAIL_ADMIN || fromEmailDefault;
-  const fromEmailVerification = process.env.RESEND_FROM_EMAIL_VERIFICATION || fromEmailDefault;
-  const adminKey = Boolean(process.env.RESEND_API_KEY_ADMIN);
-  const verifKey = Boolean(process.env.RESEND_API_KEY_VERIFICATION);
-  log(`Resend configured: ${resendConfigured ? 'yes' : 'no'}; default.from=${fromEmailDefault}`);
-  log(`Resend streams -> admin.from=${fromEmailAdmin} ${adminKey ? '(own key)' : ''}; verification.from=${fromEmailVerification} ${verifKey ? '(own key)' : ''}`);
+    const resendConfigured = Boolean(env.resend.apiKey);
+    const adminKey = Boolean(env.resend.adminApiKey);
+    const verifKey = Boolean(env.resend.verificationApiKey);
+    log(`Resend configured: ${resendConfigured ? 'yes' : 'no'}; default.from=${env.resend.defaultFrom}`);
+    log(`Resend streams -> admin.from=${env.resend.adminFrom} ${adminKey ? '(own key)' : ''}; verification.from=${env.resend.verificationFrom} ${verifKey ? '(own key)' : ''}`);
     
     setInterval(async () => {
       try {

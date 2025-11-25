@@ -8,9 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import AdminLayout from "@/components/ui/admin-layout";
 import AdminPTDialog from "@/components/admin-pt-dialog";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import PageHeader from "@/components/layout/page-header";
+import { useTrainers, useTrainerActions } from "@/hooks/useTrainers";
 import { Plus, Edit, Trash2, DollarSign, Award } from "lucide-react";
 import type { PersonalTrainer } from "@shared/schema.ts";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 export default function AdminTrainers() {
   const { toast } = useToast();
@@ -26,31 +28,21 @@ export default function AdminTrainers() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
       }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: dashboardData } = useQuery<any>({
+  const { data: dashboardData } = useQuery<{ stats?: { expiringSoon?: number } }>({
     queryKey: ["/api/admin/dashboard"],
     enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
   });
 
-  const { data: trainers } = useQuery<PersonalTrainer[]>({
-    queryKey: ["/api/admin/trainers"],
-    enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
-  });
+  const { data: trainers } = useTrainers(isAuthenticated && user?.role === 'admin');
+  const { remove } = useTrainerActions();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Do not block rendering with a loading spinner; show cached UI.
 
   if (!user || user.role !== 'admin') {
     return null;
@@ -74,17 +66,15 @@ export default function AdminTrainers() {
     }
 
     try {
-      await apiRequest("DELETE", `/api/admin/trainers/${trainerId}`);
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/trainers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trainers"] });
+      await remove.mutateAsync(trainerId);
       toast({
         title: "Success!",
         description: "Trainer has been deleted",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete trainer",
+        description: getErrorMessage(error, "Failed to delete trainer"),
         variant: "destructive",
       });
     }
@@ -93,21 +83,20 @@ export default function AdminTrainers() {
   return (
     <AdminLayout user={user} notificationCount={stats.expiringSoon || 0}>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Personal Trainers</h1>
-            <p className="text-muted-foreground mt-1">Manage personal trainers</p>
-          </div>
-          <Button 
-            className="gym-gradient text-white" 
-            onClick={handleAddTrainer}
-            data-testid="button-add-trainer"
-          >
-            <Plus className="mr-2" size={16} />
-            Add New Trainer
-          </Button>
-        </div>
+        <PageHeader
+          title="Personal Trainers"
+          subtitle="Manage personal trainers"
+          actions={
+            <Button
+              className="gym-gradient text-white"
+              onClick={handleAddTrainer}
+              data-testid="button-add-trainer"
+            >
+              <Plus className="mr-2" size={16} />
+              Add New Trainer
+            </Button>
+          }
+        />
 
         {/* Trainers Grid */}
         {!trainers || trainers.length === 0 ? (

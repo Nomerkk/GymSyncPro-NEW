@@ -1,3 +1,7 @@
-export function isUnauthorizedError(error: Error): boolean {
-  return /^401: .*Unauthorized/.test(error.message);
+export function isUnauthorizedError(error: unknown): boolean {
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = String((error as { message?: unknown }).message ?? '');
+    return /^401: .*Unauthorized/.test(msg);
+  }
+  return false;
 }

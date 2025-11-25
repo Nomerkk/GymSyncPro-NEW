@@ -7,10 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import AdminLayout from "@/components/ui/admin-layout";
 import AdminClassDialog from "@/components/admin-class-dialog";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Plus, Edit, Trash2, Users, Calendar } from "lucide-react";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import type { GymClass } from "@shared/schema.ts";
+import PageHeader from "@/components/layout/page-header";
+import { useClasses, useClassActions } from "@/hooks/useClasses";
+import { getErrorMessage } from "@/lib/errors";
+
+interface AdminDashboardData {
+  stats?: {
+    expiringSoon?: number;
+  };
+}
 
 export default function AdminClasses() {
   const { toast } = useToast();
@@ -26,31 +34,21 @@ export default function AdminClasses() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
       }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: dashboardData } = useQuery<any>({
+  const { data: dashboardData } = useQuery<AdminDashboardData>({
     queryKey: ["/api/admin/dashboard"],
     enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
   });
 
-  const { data: gymClasses } = useQuery<GymClass[]>({
-    queryKey: ["/api/admin/classes"],
-    enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
-  });
+  const { data: gymClasses } = useClasses(isAuthenticated && user?.role === 'admin');
+  const { remove } = useClassActions();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Do not block rendering with a loading spinner; rely on cached data.
 
   if (!user || user.role !== 'admin') {
     return null;
@@ -74,17 +72,15 @@ export default function AdminClasses() {
     }
 
     try {
-      await apiRequest("DELETE", `/api/admin/classes/${classId}`);
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/classes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
+      await remove.mutateAsync(classId);
       toast({
         title: "Success!",
         description: "Class has been deleted",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete class",
+        description: getErrorMessage(error, "Failed to delete class"),
         variant: "destructive",
       });
     }
@@ -93,21 +89,20 @@ export default function AdminClasses() {
   return (
     <AdminLayout user={user} notificationCount={stats.expiringSoon || 0}>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Gym Classes</h1>
-            <p className="text-muted-foreground mt-1">Manage gym classes and schedules</p>
-          </div>
-          <Button 
-            className="gym-gradient text-white" 
-            onClick={handleAddClass}
-            data-testid="button-add-class"
-          >
-            <Plus className="mr-2" size={16} />
-            Add New Class
-          </Button>
-        </div>
+        <PageHeader
+          title="Gym Classes"
+          subtitle="Manage gym classes and schedules"
+          actions={
+            <Button
+              className="gym-gradient text-white"
+              onClick={handleAddClass}
+              data-testid="button-add-class"
+            >
+              <Plus className="mr-2" size={16} />
+              Add New Class
+            </Button>
+          }
+        />
 
         {/* Classes Grid */}
         {!gymClasses || gymClasses.length === 0 ? (
@@ -120,9 +115,9 @@ export default function AdminClasses() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {gymClasses.map((gymClass) => (
               <Card key={gymClass.id} className="hover:shadow-lg transition-shadow overflow-hidden">
-                {(gymClass as any).imageUrl && (
+                {gymClass.imageUrl && (
                   <AspectRatio ratio={16/9}>
-                    <img src={(gymClass as any).imageUrl} alt={gymClass.name} className="w-full h-full object-cover" />
+                    <img src={gymClass.imageUrl} alt={gymClass.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   </AspectRatio>
                 )}
                 <CardHeader>

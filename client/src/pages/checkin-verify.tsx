@@ -3,11 +3,16 @@ import { useRoute } from "wouter";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface VerifyUser {
+  firstName?: string;
+  lastName?: string;
+}
+
 export default function CheckInVerify() {
   const [, params] = useRoute("/checkin/verify/:code");
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
-  const [memberData, setMemberData] = useState<any>(null);
+  const [memberData, setMemberData] = useState<VerifyUser | null>(null);
 
   useEffect(() => {
     const verifyCheckIn = async () => {
@@ -37,7 +42,7 @@ export default function CheckInVerify() {
           setMessage(data.message || "Check-in gagal");
           setMemberData(data.user);
         }
-      } catch (error) {
+      } catch {
         setStatus("error");
         setMessage("Terjadi kesalahan saat check-in");
       }

@@ -16,8 +16,8 @@ import {
   ChevronRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import logoPath from "@assets/image_1759411904981.png";
-import { useState } from "react";
+import idachiLogoPng from "@assets/idachi1.png";
+import idachiLogoWebp from "@assets/idachi1.webp";
 
 interface AdminSidebarProps {
   className?: string;
@@ -81,12 +81,16 @@ export default function AdminSidebar({
         <div className="flex items-center justify-between px-4 h-16 border-b border-border">
           {!isCollapsed && (
             <div className="flex items-center gap-3 animate-fade-in">
-              <img 
-                src={logoPath} 
-                alt="Gym Logo" 
-                className="w-10 h-10 object-contain rounded-lg"
-                data-testid="img-sidebar-logo"
-              />
+              <picture data-testid="img-sidebar-logo">
+                <source srcSet={idachiLogoWebp} type="image/webp" />
+                <img 
+                  src={idachiLogoPng} 
+                  alt="Idachi Fitness Logo" 
+                  className="w-10 h-10 object-contain rounded-lg"
+                  loading="lazy" decoding="async"
+                  width="40" height="40"
+                />
+              </picture>
               <div className="flex flex-col">
                 <h2 className="text-sm font-bold text-foreground">Idachi Fitness</h2>
                 <p className="text-xs text-muted-foreground">Admin Panel</p>
@@ -95,12 +99,16 @@ export default function AdminSidebar({
           )}
           
           {isCollapsed && (
-            <img 
-              src={logoPath} 
-              alt="Logo" 
-              className="w-10 h-10 object-contain rounded-lg mx-auto animate-scale-in"
-              data-testid="img-sidebar-logo-collapsed"
-            />
+            <picture data-testid="img-sidebar-logo-collapsed" className="mx-auto animate-scale-in">
+              <source srcSet={idachiLogoWebp} type="image/webp" />
+              <img 
+                src={idachiLogoPng} 
+                alt="Idachi Fitness Logo" 
+                className="w-10 h-10 object-contain rounded-lg"
+                loading="lazy" decoding="async"
+                width="40" height="40"
+              />
+            </picture>
           )}
 
           <button

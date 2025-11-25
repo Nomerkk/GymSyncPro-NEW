@@ -50,8 +50,8 @@ import {
   type InsertPushSubscription,
   type Promotion,
   type InsertPromotion,
-} from "@shared/schema";
-import { db } from "./db";
+} from "../shared/schema";
+import { db } from "./database/index";
 import { eq, desc, gte, lte, and, or, count, sum, sql } from "drizzle-orm";
 import { sendInactivityReminderEmail } from "./email/resend";
 import { randomUUID } from 'crypto';

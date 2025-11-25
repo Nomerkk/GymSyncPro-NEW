@@ -7,8 +7,32 @@ import { cn } from "@/lib/utils";
 
 interface CheckInNotificationProps {
   show: boolean;
-  data: any;
+  data: CheckInNotificationData;
   onClose: () => void;
+}
+
+interface NotificationUser {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImageUrl?: string | null;
+}
+
+interface NotificationPlan {
+  name?: string;
+}
+
+interface NotificationMembership {
+  endDate: string | Date;
+  plan?: NotificationPlan | null;
+}
+
+interface CheckInNotificationData {
+  success: boolean;
+  message?: string;
+  checkInTime?: string | Date;
+  user?: NotificationUser | null;
+  membership?: NotificationMembership | null;
 }
 
 export default function CheckInNotificationPopup({ show, data, onClose }: CheckInNotificationProps) {
@@ -99,7 +123,7 @@ export default function CheckInNotificationPopup({ show, data, onClose }: CheckI
           <div className="flex items-center gap-4">
             <div className="relative">
               <Avatar className="w-16 h-16 border-4 border-white dark:border-slate-800 shadow-lg" data-testid="img-member-photo">
-                <AvatarImage src={user?.profileImageUrl} />
+                <AvatarImage src={user?.profileImageUrl ?? undefined} />
                 <AvatarFallback className="text-lg font-semibold">
                   {`${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}`}
                 </AvatarFallback>

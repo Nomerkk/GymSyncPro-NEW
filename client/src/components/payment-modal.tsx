@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { paymentsService } from "@/services/payments";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -13,61 +14,60 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { QrCode, CreditCard, Building, Copy, CheckCircle, Clock, AlertCircle } from "lucide-react";
-import * as QRCode from 'qrcode';
+import { QrCode, Building, Copy, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+interface Plan {
+  id: string;
+  name: string;
+  price: string | number;
+  description?: string;
+}
+
+interface QrisPaymentResult {
+  orderId: string;
+  qrString: string;
+}
+
+interface VaPaymentResult {
+  orderId: string;
+  bank: string;
+  vaNumber: string;
+}
+
+type PaymentResult = QrisPaymentResult | VaPaymentResult;
+
 export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
   const { toast } = useToast();
   const [selectedPlan, setSelectedPlan] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("qris");
   const [selectedBank, setSelectedBank] = useState("bca");
-  const [paymentResult, setPaymentResult] = useState<any>(null);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [step, setStep] = useState(1); // 1: plan & method, 2: payment result
-  const [qrCodeSvg, setQrCodeSvg] = useState<string>("");
+  const [qrString, setQrString] = useState<string>("");
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string>("pending");
 
-  const { data: membershipPlans } = useQuery<any[]>({
+  const { data: membershipPlans } = useQuery<Plan[]>({
     queryKey: ["/api/membership-plans"],
     enabled: isOpen,
   });
 
-  const qrisPaymentMutation = useMutation({
-    mutationFn: async (planId: string) => {
-      const response = await apiRequest("POST", "/api/payment/qris", { planId });
-      return await response.json();
-    },
+  const qrisPaymentMutation = useMutation<QrisPaymentResult, unknown, string>({
+    mutationFn: async (planId: string): Promise<QrisPaymentResult> =>
+      (await paymentsService.createQris(planId)) as unknown as QrisPaymentResult,
     onSuccess: (data) => {
       setPaymentResult(data);
       setStep(2);
       setTimeLeft(15 * 60); // 15 minutes
       
       // Generate QR code data URL
-      if (data.qrString) {
-        try {
-          QRCode.toDataURL(data.qrString, {
-            width: 200,
-            margin: 2,
-            color: {
-              dark: '#000000',
-              light: '#ffffff'
-            }
-          }, (err, url) => {
-            if (err) {
-              console.error('Error generating QR code:', err);
-            } else {
-              setQrCodeSvg(url);
-            }
-          });
-        } catch (error) {
-          console.error("Error generating QR code:", error);
-        }
-      }
+      if (data.qrString) setQrString(data.qrString);
       
       queryClient.invalidateQueries({ queryKey: ["/api/member/dashboard"] });
       toast({
@@ -75,7 +75,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
         description: "Scan QR code untuk melakukan pembayaran",
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Error",
         description: "Gagal membuat pembayaran QRIS",
@@ -84,11 +84,9 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
     },
   });
 
-  const vaPaymentMutation = useMutation({
-    mutationFn: async ({ planId, bankCode }: { planId: string; bankCode: string }) => {
-      const response = await apiRequest("POST", "/api/payment/va", { planId, bankCode });
-      return await response.json();
-    },
+  const vaPaymentMutation = useMutation<VaPaymentResult, unknown, { planId: string; bankCode: string }>({
+    mutationFn: async ({ planId, bankCode }) =>
+      (await paymentsService.createVa(planId, bankCode)) as unknown as VaPaymentResult,
     onSuccess: (data) => {
       setPaymentResult(data);
       setStep(2);
@@ -99,7 +97,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
         description: `Transfer ke Virtual Account ${data.bank}`,
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Error",
         description: "Gagal membuat Virtual Account",
@@ -146,8 +144,8 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
     onClose();
   };
 
-  const plans = membershipPlans || [];
-  const selectedPlanData = plans.find((plan: any) => plan.id === selectedPlan);
+  const plans: Plan[] = membershipPlans || [];
+  const selectedPlanData = plans.find((plan) => plan.id === selectedPlan);
 
   // Countdown timer effect
   useEffect(() => {
@@ -171,15 +169,10 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await apiRequest('GET', `/api/payment/status/${paymentResult.orderId}`);
-        const statusData = await response.json();
-        
+        const statusData = await paymentsService.status(paymentResult.orderId);
         if (statusData.status === 'completed') {
           setPaymentStatus('completed');
-          toast({
-            title: "Pembayaran Berhasil!",
-            description: "Membership Anda telah aktif",
-          });
+          toast({ title: "Pembayaran Berhasil!", description: "Membership Anda telah aktif" });
           queryClient.invalidateQueries({ queryKey: ["/api/member/dashboard"] });
           clearInterval(pollInterval);
         } else if (statusData.status === 'failed' || statusData.status === 'expired') {
@@ -231,7 +224,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                 <Label className="text-xs sm:text-sm font-medium text-foreground mb-2 sm:mb-3 block">Pilih Paket Membership</Label>
                 <RadioGroup value={selectedPlan} onValueChange={setSelectedPlan}>
                   <div className="space-y-3">
-                    {plans.map((plan: any) => (
+                    {plans.map((plan) => (
                       <div key={plan.id}>
                         <RadioGroupItem value={plan.id} id={plan.id} className="sr-only" />
                         <Label
@@ -244,7 +237,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                           <div className="flex-1">
                             <div className="flex justify-between items-center">
                               <span className="font-medium text-foreground">{plan.name}</span>
-                              <span className="font-bold text-foreground">Rp {parseInt(plan.price).toLocaleString('id-ID')}/bulan</span>
+                              <span className="font-bold text-foreground">Rp {parseInt(String(plan.price)).toLocaleString('id-ID')}/bulan</span>
                             </div>
                             <p className="text-sm text-muted-foreground">{plan.description}</p>
                           </div>
@@ -323,7 +316,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-foreground">Total</span>
                       <span className="text-2xl font-bold text-foreground" data-testid="text-payment-total">
-                        Rp {parseInt(selectedPlanData.price).toLocaleString('id-ID')}
+                        Rp {parseInt(String(selectedPlanData.price)).toLocaleString('id-ID')}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Pembayaran bulanan</p>
@@ -379,13 +372,8 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                         <CardContent className="p-6">
                           <div className="bg-white p-4 rounded border-2 border-dashed border-gray-300 mb-4">
                             <div className="w-48 h-48 bg-white rounded flex items-center justify-center mx-auto">
-                              {qrCodeSvg ? (
-                                <img 
-                                  src={qrCodeSvg} 
-                                  alt="QR Code untuk pembayaran" 
-                                  className="w-full h-full object-contain"
-                                  data-testid="img-qr-code"
-                                />
+                              {qrString ? (
+                                <QRCodeCanvas value={qrString} size={192} includeMargin={true} fgColor="#000000" bgColor="#FFFFFF" />
                               ) : (
                                 <div className="text-center">
                                   <QrCode size={64} className="text-gray-400 mx-auto mb-2" />
@@ -417,7 +405,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                           </div>
                           
                           <Button
-                            onClick={() => copyToClipboard(paymentResult.qrString, "QR String")}
+                            onClick={() => copyToClipboard(qrString, "QR String")}
                             variant="outline"
                             className="w-full"
                             data-testid="button-copy-qr"
@@ -435,7 +423,7 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                       </div>
                       
                       <div>
-                        <h3 className="text-lg font-semibold text-foreground mb-2">Virtual Account {paymentResult.bank}</h3>
+                        <h3 className="text-lg font-semibold text-foreground mb-2">Virtual Account {(paymentResult as VaPaymentResult).bank}</h3>
                         <p className="text-muted-foreground">Transfer ke nomor Virtual Account berikut</p>
                       </div>
 
@@ -445,10 +433,10 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                             <Label className="text-sm text-muted-foreground">Nomor Virtual Account</Label>
                             <div className="flex items-center justify-center space-x-2 mt-2">
                               <span className="text-2xl font-mono font-bold text-foreground" data-testid="text-va-number">
-                                {paymentResult.vaNumber}
+                                {(paymentResult as VaPaymentResult).vaNumber}
                               </span>
                               <Button
-                                onClick={() => copyToClipboard(paymentResult.vaNumber, "Nomor VA")}
+                                onClick={() => copyToClipboard((paymentResult as VaPaymentResult).vaNumber, "Nomor VA")}
                                 variant="outline"
                                 size="sm"
                                 data-testid="button-copy-va"
@@ -461,11 +449,11 @@ export default function PaymentModal({ isOpen, onClose }: PaymentModalProps) {
                           <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
                               <Label className="text-muted-foreground">Bank</Label>
-                              <p className="font-medium">{paymentResult.bank}</p>
+                              <p className="font-medium">{(paymentResult as VaPaymentResult).bank}</p>
                             </div>
                             <div>
                               <Label className="text-muted-foreground">Jumlah</Label>
-                              <p className="font-medium">Rp {parseInt(selectedPlanData?.price || '0').toLocaleString('id-ID')}</p>
+                              <p className="font-medium">Rp {parseInt(String(selectedPlanData?.price ?? '0')).toLocaleString('id-ID')}</p>
                             </div>
                           </div>
                         </CardContent>

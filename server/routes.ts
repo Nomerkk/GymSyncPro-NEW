@@ -4,7 +4,7 @@ import passport from "passport";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, isAdmin } from "./auth";
-import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSchema, insertCheckInSchema, insertPaymentSchema, registerSchema, loginSchema, forgotPasswordRequestSchema, resetPasswordSchema, verifyEmailSchema, insertPromotionSchema } from "@shared/schema";
+import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSchema, insertCheckInSchema, insertPaymentSchema, registerSchema, loginSchema, forgotPasswordRequestSchema, resetPasswordSchema, verifyEmailSchema, insertPromotionSchema } from "../shared/schema";
 import { sendPasswordResetEmail } from "./email/resend";
 import { z } from "zod";
 import { randomUUID, createHash } from "node:crypto";
@@ -13,6 +13,8 @@ import path from 'path';
 import { sendNotificationWithPush } from "./push";
 import { normalizePhone, sendWhatsAppText } from "./whatsapp";
 import { getUncachableResendClient, getResendClientForAdmin, buildBrandedEmailHtml, buildBrandedEmailHtmlWithCta, textToSafeHtml } from "./email/resend";
+import { env } from "./config/index";
+import { healthRouter } from "./api/routes/health";
 
 // Temporary storage for email verification codes (before user creation)
 const pendingVerifications = new Map<string, { code: string; expiresAt: Date }>();
@@ -35,63 +37,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
-  // Public health check (no auth required)
-  app.get('/api/health', async (_req, res) => {
-    const startedAt = new Date().toISOString();
-    let dbConnected = true as boolean;
-    let dbError: string | undefined;
-    try {
-      // Lightweight DB check: attempt a simple query via storage
-      // Using getAllUsers is safe for connectivity validation; we don't return its data
-      await storage.getAllUsers();
-    } catch (e: any) {
-      dbConnected = false;
-      dbError = e?.message || 'Unknown DB error';
-    }
-    res.json({ ok: true, env: app.get('env'), startedAt, dbConnected, dbError });
-  });
-
-  // Integrations health (no auth, safe info only)
-  app.get('/api/health/integrations', async (_req, res) => {
-    const resp: any = { ok: true };
-    // Resend status (do not expose secrets)
-    const resendConfigured = Boolean(process.env.RESEND_API_KEY);
-    const adminKeyConfigured = Boolean(process.env.RESEND_API_KEY_ADMIN);
-    const verifKeyConfigured = Boolean(process.env.RESEND_API_KEY_VERIFICATION);
-    resp.resend = {
-      configured: resendConfigured,
-      default: {
-        fromEmail: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
-      },
-      admin: {
-        apiKeyOverride: adminKeyConfigured,
-        fromEmail: process.env.RESEND_FROM_EMAIL_ADMIN || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
-        replyTo: process.env.RESEND_REPLY_TO_ADMIN || undefined,
-      },
-      verification: {
-        apiKeyOverride: verifKeyConfigured,
-        fromEmail: process.env.RESEND_FROM_EMAIL_VERIFICATION || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
-      },
-    };
-    if (resendConfigured) {
-      try {
-        const { client } = await (await import('./email/resend')).getUncachableResendClient();
-        const anyFrom = resp.resend.admin.fromEmail || resp.resend.default.fromEmail;
-        const domain = anyFrom.includes('@') ? anyFrom.split('@')[1]?.trim() : '';
-        // Best-effort: check domain list if SDK supports it
-        const anyClient: any = client as any;
-        if (anyClient?.domains?.list && domain) {
-          const result = await anyClient.domains.list();
-          const domains = result?.data || result || [];
-          const found = domains.find((d: any) => d?.name === domain);
-          resp.resend.domain = found ? { name: found.name, status: found.status || 'unknown' } : { name: domain, status: 'unknown' };
-        }
-      } catch (e: any) {
-        resp.resend.error = e?.message || String(e);
-      }
-    }
-    res.json(resp);
-  });
+  app.use(healthRouter);
 
   // Admin image upload (base64 data URL)
   app.post('/api/admin/upload-image', isAuthenticated, async (req: any, res) => {
@@ -191,7 +137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check for admin secret key (you can set this in environment variables)
       // For now, we'll allow if the key is "admin123" or if ADMIN_SECRET_KEY env var matches
-      const validSecretKey = process.env.ADMIN_SECRET_KEY || "admin123";
+      const validSecretKey = env.adminSecret;
       
       if (adminSecretKey !== validSecretKey) {
         console.log("Invalid admin secret key provided");
@@ -233,14 +179,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("Admin user created successfully:", user.id);
 
-      // Log user in
+      // Log user in and ensure session is saved before responding
       req.login(user, (err) => {
         if (err) {
           console.error("Failed to login after admin registration:", err);
           return res.status(500).json({ message: "Failed to login after registration" });
         }
         console.log("Admin logged in successfully");
-        res.json({ message: "Admin registration successful", user: { ...user, password: undefined } });
+        try {
+          // Avoid race with immediate client refetch of /api/auth/user
+          req.session.save((saveErr: any) => {
+            if (saveErr) {
+              console.error("[Auth] Failed to save session post admin registration:", saveErr);
+              return res.status(500).json({ message: "Login session error" });
+            }
+            res.json({ message: "Admin registration successful", user: { ...user, password: undefined } });
+          });
+        } catch (_) {
+          // Fallback: respond anyway
+          res.json({ message: "Admin registration successful", user: { ...user, password: undefined } });
+        }
       });
     } catch (error: any) {
       console.error("Error during admin registration:", error);
@@ -265,15 +223,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User tidak ditemukan" });
       }
 
-      // Log user in after verification
+      // Log user in after verification; ensure session persisted before respond
       req.login(user, (err) => {
         if (err) {
           return res.status(500).json({ message: "Failed to login after verification" });
         }
-        res.json({ 
-          message: "Email berhasil diverifikasi! Selamat datang di Idachi Fitness!",
-          user: { ...user, password: undefined }
-        });
+        try {
+          req.session.save((saveErr: any) => {
+            if (saveErr) {
+              console.error("[Auth] Failed to save session post verification:", saveErr);
+              return res.status(500).json({ message: "Login session error" });
+            }
+            res.json({ 
+              message: "Email berhasil diverifikasi! Selamat datang di Idachi Fitness!",
+              user: { ...user, password: undefined }
+            });
+          });
+        } catch (_) {
+          res.json({ 
+            message: "Email berhasil diverifikasi! Selamat datang di Idachi Fitness!",
+            user: { ...user, password: undefined }
+          });
+        }
       });
     } catch (error: any) {
       console.error("Error during email verification:", error);
@@ -401,15 +372,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Clear the pending verification
       pendingVerifications.delete(validatedData.email);
 
-      // Log user in
+      // Log user in; ensure session saved before responding
       req.login(user, (err) => {
         if (err) {
           return res.status(500).json({ message: "Failed to login after registration" });
         }
-        res.json({ 
-          message: "Registrasi berhasil! Selamat datang di Idachi Fitness!",
-          user: { ...user, password: undefined }
-        });
+        try {
+          req.session.save((saveErr: any) => {
+            if (saveErr) {
+              console.error("[Auth] Failed to save session post register-verified:", saveErr);
+              return res.status(500).json({ message: "Login session error" });
+            }
+            res.json({ 
+              message: "Registrasi berhasil! Selamat datang di Idachi Fitness!",
+              user: { ...user, password: undefined }
+            });
+          });
+        } catch (_) {
+          res.json({ 
+            message: "Registrasi berhasil! Selamat datang di Idachi Fitness!",
+            user: { ...user, password: undefined }
+          });
+        }
       });
     } catch (error: any) {
       console.error("Error during registration:", error);
@@ -478,8 +462,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Set cookie to expire in 30 days instead of default session lifetime
           req.session.cookie.maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
         }
-        
-        res.json({ message: "Login successful", user: { ...user, password: undefined } });
+
+        // Ensure the session is persisted to the store before responding
+        // to avoid a race where the client refetches /api/auth/user and
+        // hits 401 because the session isn't yet saved.
+        req.session.save((saveErr: any) => {
+          if (saveErr) {
+            console.error("Failed to save session:", saveErr);
+            return res.status(500).json({ message: "Login error" });
+          }
+          res.json({ message: "Login successful", user: { ...user, password: undefined } });
+        });
       });
     })(req, res, next);
   });
@@ -658,7 +651,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get('/api/push/public-key', async (_req, res) => {
-    const publicKey = process.env.VAPID_PUBLIC_KEY;
+    const publicKey = env.push.vapidPublic;
     if (!publicKey) {
       return res.status(500).json({ message: "VAPID keys not configured" });
     }
@@ -674,6 +667,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch user" });
     }
   });
+
+  // Dev-only: session debug endpoint
+  if ((env.nodeEnv || app.get('env')) !== 'production') {
+    app.get('/api/auth/debug-session', (req: any, res) => {
+      const cookieHeader = req.headers?.cookie;
+      res.json({
+        path: req.path,
+        method: req.method,
+        cookieHeaderPresent: Boolean(cookieHeader),
+        cookieHeader: cookieHeader || null,
+        hasSession: Boolean(req.session),
+        sessionID: req.sessionID || null,
+        isAuthenticated: typeof req.isAuthenticated === 'function' ? req.isAuthenticated() : false,
+        userId: req.user?.id || null,
+      });
+    });
+  }
 
   // Member routes
   app.get('/api/member/dashboard', isAuthenticated, async (req: any, res) => {
@@ -716,6 +726,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Aggregated bootstrap endpoint: combines dashboard + promotions
+  app.get('/api/member/bootstrap', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+
+      const [membership, checkIns, classBookings, payments, crowdCount, promotions] = await Promise.all([
+        storage.getUserMembership(userId),
+        storage.getUserCheckIns(userId, 10),
+        storage.getUserClassBookings(userId),
+        storage.getUserPayments(userId),
+        storage.getCurrentCrowdCount(),
+        storage.getActivePromotions(),
+      ]);
+
+      // Calculate stats (mirrors /api/member/dashboard)
+      const now = new Date();
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthlyCheckIns = checkIns.filter(ci => ci.checkInTime && ci.checkInTime >= thisMonth).length;
+      const upcomingClasses = classBookings.filter(b => b.status === 'booked' && b.bookingDate > now);
+
+      const dashboard = {
+        membership,
+        checkIns,
+        classBookings: upcomingClasses,
+        payments: payments.slice(0, 5),
+        stats: {
+          monthlyCheckIns,
+          upcomingClasses: upcomingClasses.length,
+          currentCrowd: crowdCount,
+        },
+      };
+
+      // Do not set Cache-Control for user-specific dashboard; keep private/no-store by default.
+      // Promotions are public data but included inline; client may cache via React Query.
+      res.json({ dashboard, promotions });
+    } catch (error: any) {
+      console.error('Error fetching bootstrap data:', error?.stack || error);
+      const status = error?.status || error?.statusCode || 500;
+      const message = error?.message || 'Failed to fetch bootstrap';
+      res.status(status).json({ message });
+    }
+  });
+
   // Check-in routes
   app.post('/api/checkin/generate', isAuthenticated, async (req: any, res) => {
     try {
@@ -728,21 +781,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "Akun Anda sedang dinonaktifkan. Silakan hubungi admin untuk informasi lebih lanjut." 
         });
       }
-      
-      // Generate one-time QR code with 5 minutes expiry
-      const oneTimeQr = await storage.generateOneTimeQrCode(userId);
-      
+
+      // Return permanent per-user QR code (static)
+      const permanentQr = await storage.ensureUserPermanentQrCode(userId);
+
       // Get membership info
       const membership = await storage.getUserMembership(userId);
-      
+
       // Check if membership is active
       const hasActiveMembership = !!(membership && new Date(membership.endDate) > new Date());
 
-      res.json({ 
-        qrCode: oneTimeQr.qrCode,
-        expiresAt: oneTimeQr.expiresAt,
+      // Determine cooldown status (30 minutes after last check-in/scan)
+      const THIRTY_MIN_MS = 30 * 60 * 1000;
+      let cooldownUntil: string | undefined;
+      try {
+        const recent = await storage.getUserCheckIns(userId, 1);
+        if (recent && recent[0]) {
+          const last = recent[0];
+          const lastEvent = (last.checkOutTime ?? last.checkInTime) as Date;
+          if (lastEvent) {
+            const until = new Date(lastEvent.getTime() + THIRTY_MIN_MS);
+            if (until > new Date()) {
+              cooldownUntil = until.toISOString();
+            }
+          }
+        }
+      } catch {}
+
+      res.json({
+        qrCode: permanentQr,
+        // no expiresAt for permanent QR
         membership,
-        hasActiveMembership 
+        hasActiveMembership,
+        cooldownUntil,
       });
     } catch (error: any) {
       // Log full error stack for debugging
@@ -750,7 +821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // In development include error.message in response to help debugging in the browser
       const responsePayload: any = { message: "Failed to generate QR code" };
-      if (process.env.NODE_ENV === "development") {
+      if (env.isDevelopment) {
         responsePayload.error = error?.message || String(error);
       }
 
@@ -778,43 +849,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ success: false, message: 'QR code is required' });
       }
 
-      // Check one-time QR code status
+      // First, try permanent member QR
+      const memberUser = await storage.getUserByPermanentQrCode(qrCode);
+      if (memberUser) {
+        // If a check-in was just created recently, mark as used for UX
+        const RECENT_WINDOW_MS = 2 * 60 * 1000; // 2 minutes window
+        const recent = await storage.getUserCheckIns(memberUser.id, 1);
+        const latest = recent && recent[0] ? recent[0] : null;
+        if (latest) {
+          const createdAt = latest.checkInTime as Date;
+          if (createdAt && new Date().getTime() - createdAt.getTime() <= RECENT_WINDOW_MS) {
+            return res.json({
+              success: true,
+              status: 'used',
+              checkIn: latest,
+              user: { firstName: memberUser.firstName, lastName: memberUser.lastName },
+            });
+          }
+        }
+        // Otherwise still waiting to be scanned/approved
+        return res.json({ success: true, status: 'waiting' });
+      }
+
+      // Fallback: legacy one-time QR code status
       const qrData = await storage.validateOneTimeQrCode(qrCode);
-      
       if (!qrData) {
         return res.json({ success: false, status: 'invalid', message: 'QR code tidak ditemukan' });
       }
 
-      // If QR code is used, find the check-in record
       if (qrData.status === 'used') {
-        // Find the most recent check-in for this user
         const checkIns = await storage.getUserCheckIns(qrData.userId);
         const latestCheckIn = checkIns && checkIns.length > 0 ? checkIns[0] : null;
-        
         return res.json({
           success: true,
           status: 'used',
           checkIn: latestCheckIn,
-          user: {
-            firstName: qrData.user.firstName,
-            lastName: qrData.user.lastName
-          }
+          user: { firstName: qrData.user.firstName, lastName: qrData.user.lastName },
         });
       }
 
-      // QR code is still valid
-      return res.json({
-        success: true,
-        status: qrData.status,
-        expiresAt: qrData.expiresAt
-      });
+      return res.json({ success: true, status: qrData.status, expiresAt: qrData.expiresAt });
     } catch (error) {
       console.error("Error checking QR code status:", error);
       res.status(500).json({ success: false, message: "Failed to check QR code status" });
     }
   });
 
-  // Public check-in verification endpoint (no auth required) - One-time QR
+  // Public check-in verification endpoint (no auth required) - supports permanent and legacy one-time QR
   app.post('/api/checkin/verify', async (req, res) => {
     try {
       const { qrCode } = req.body;
@@ -825,91 +906,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'Kode QR tidak valid' 
         });
       }
-
-      // Validate one-time QR code
-      const qrData = await storage.validateOneTimeQrCode(qrCode);
-      
-      if (!qrData) {
-        return res.status(404).json({ 
-          success: false,
-          message: 'QR code tidak valid atau tidak ditemukan' 
-        });
-      }
-
-      // Check if QR code is already used
-      if (qrData.status === 'used') {
-        return res.json({
-          success: false,
-          message: 'QR code sudah pernah digunakan'
-        });
-      }
-
-      // Check if QR code is expired
       const now = new Date();
+
+      // Try permanent QR flow first
+      const memberFromPermanent = await storage.getUserByPermanentQrCode(qrCode);
+      if (memberFromPermanent) {
+        const memberUser = memberFromPermanent;
+        const safeUserData = { firstName: memberUser.firstName, lastName: memberUser.lastName };
+        if (memberUser.active === false) {
+          return res.json({ success: false, user: safeUserData, message: 'Akun Anda sedang dinonaktifkan. Silakan hubungi admin untuk informasi lebih lanjut.' });
+        }
+        const membership = await storage.getUserMembership(memberUser.id);
+        const hasActiveMembership = !!(membership && new Date(membership.endDate) > now);
+        if (!hasActiveMembership) {
+          return res.json({ success: false, user: safeUserData, message: 'Belum terdaftar membership atau membership sudah expired' });
+        }
+
+        // Enforce 30-minute cooldown since last check-in or checkout
+        const recent = await storage.getUserCheckIns(memberUser.id, 1);
+        const last = recent && recent[0] ? recent[0] : null;
+        const THIRTY_MIN_MS = 30 * 60 * 1000;
+        if (last) {
+          // If currently active, block re-check-in
+          if (last.status === 'active') {
+            return res.json({ success: false, user: safeUserData, message: 'Anda masih memiliki sesi aktif.' });
+          }
+          const lastEvent = (last.checkOutTime ?? last.checkInTime) as Date;
+          if (lastEvent && now.getTime() - lastEvent.getTime() < THIRTY_MIN_MS) {
+            return res.json({ success: false, user: safeUserData, message: 'Anda baru saja check-in. Tunggu 30 menit sebelum check-in lagi.' });
+          }
+        }
+
+        // Create new check-in
+        const checkInQr = randomUUID();
+        const checkIn = await storage.createCheckIn({ userId: memberUser.id, qrCode: checkInQr, status: 'active' });
+        return res.json({ success: true, user: safeUserData, checkIn: { id: checkIn.id, checkInTime: checkIn.checkInTime } });
+      }
+
+      // Legacy one-time QR flow
+      const qrData = await storage.validateOneTimeQrCode(qrCode);
+      if (!qrData) {
+        return res.status(404).json({ success: false, message: 'QR code tidak valid atau tidak ditemukan' });
+      }
+      if (qrData.status === 'used') {
+        return res.json({ success: false, message: 'QR code sudah pernah digunakan' });
+      }
       if (qrData.status === 'expired' || qrData.expiresAt < now) {
-        return res.json({
-          success: false,
-          message: 'QR code sudah kadaluarsa. Silakan generate QR baru'
-        });
+        return res.json({ success: false, message: 'QR code sudah kadaluarsa. Silakan generate QR baru' });
       }
-
       const memberUser = qrData.user;
-
-      // Sanitize user data - only return safe fields for display
-      const safeUserData = {
-        firstName: memberUser.firstName,
-        lastName: memberUser.lastName
-      };
-
-      // Check if user is suspended
+      const safeUserData = { firstName: memberUser.firstName, lastName: memberUser.lastName };
       if (memberUser.active === false) {
-        return res.json({
-          success: false,
-          user: safeUserData,
-          message: 'Akun Anda sedang dinonaktifkan. Silakan hubungi admin untuk informasi lebih lanjut.'
-        });
+        return res.json({ success: false, user: safeUserData, message: 'Akun Anda sedang dinonaktifkan. Silakan hubungi admin untuk informasi lebih lanjut.' });
       }
-
-      // Check membership status
       const hasActiveMembership = qrData.membership && new Date(qrData.membership.endDate) > now;
-
-      // If no active membership, return failure response with member info
       if (!hasActiveMembership) {
-        return res.json({
-          success: false,
-          user: safeUserData,
-          message: 'Belum terdaftar membership atau membership sudah expired'
-        });
+        return res.json({ success: false, user: safeUserData, message: 'Belum terdaftar membership atau membership sudah expired' });
       }
 
-      // Mark QR code as used (atomic operation to prevent race conditions)
+      // Enforce cooldown for legacy path as well
+      const recent = await storage.getUserCheckIns(memberUser.id, 1);
+      const last = recent && recent[0] ? recent[0] : null;
+      const THIRTY_MIN_MS = 30 * 60 * 1000;
+      if (last) {
+        if (last.status === 'active') {
+          return res.json({ success: false, user: safeUserData, message: 'Anda masih memiliki sesi aktif.' });
+        }
+        const lastEvent = (last.checkOutTime ?? last.checkInTime) as Date;
+        if (lastEvent && now.getTime() - lastEvent.getTime() < THIRTY_MIN_MS) {
+          return res.json({ success: false, user: safeUserData, message: 'Anda baru saja check-in. Tunggu 30 menit sebelum check-in lagi.' });
+        }
+      }
+
+      // Mark one-time QR used and create check-in
       try {
         await storage.markQrCodeAsUsed(qrCode);
       } catch (error) {
-        // QR already used by another concurrent request
-        return res.json({
-          success: false,
-          message: 'QR code sudah pernah digunakan'
-        });
+        return res.json({ success: false, message: 'QR code sudah pernah digunakan' });
       }
-
-  // Create check-in
-  const checkInQr = randomUUID();
-      const checkIn = await storage.createCheckIn({
-        userId: memberUser.id,
-        qrCode: checkInQr,
-        status: 'active',
-      });
-
-      // Sanitize check-in data before returning
-      res.json({
-        success: true,
-        user: safeUserData,
-        checkIn: {
-          id: checkIn.id,
-          checkInTime: checkIn.checkInTime
-        }
-      });
+      const checkInQr = randomUUID();
+      const checkIn = await storage.createCheckIn({ userId: memberUser.id, qrCode: checkInQr, status: 'active' });
+      return res.json({ success: true, user: safeUserData, checkIn: { id: checkIn.id, checkInTime: checkIn.checkInTime } });
     } catch (error) {
       console.error("Error verifying check-in:", error);
       res.status(500).json({ 
@@ -1812,13 +1889,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       // Optional: handle special user states like leave/pause if implemented in the future
 
-      // Check if user already has an active check-in
-      const existing = await storage.getUserCheckIns(memberUser.id, 1);
-      const hasActive = existing[0] && existing[0].status === 'active';
+      // Check cooldown and active session
+      const recent = await storage.getUserCheckIns(memberUser.id, 1);
+      const last = recent && recent[0] ? recent[0] : null;
+      const hasActive = !!(last && last.status === 'active');
+      const THIRTY_MIN_MS = 30 * 60 * 1000;
+      if (!hasActive && last) {
+        const lastEvent = (last.checkOutTime ?? last.checkInTime) as Date;
+        if (lastEvent && now.getTime() - lastEvent.getTime() < THIRTY_MIN_MS) {
+          const remainingMs = THIRTY_MIN_MS - (now.getTime() - lastEvent.getTime());
+          return res.status(429).json({ success: false, message: 'Member dalam masa cooldown 30 menit. Coba lagi nanti.', cooldownRemainingSec: Math.ceil(remainingMs / 1000) });
+        }
+      }
+
       let created;
       if (hasActive) {
-        // Already active: just return the existing, optionally in the future could update locker
-        created = existing[0];
+        // Already active: just return the existing
+        created = last;
       } else {
         const checkInQr = randomUUID();
         created = await storage.createCheckIn({

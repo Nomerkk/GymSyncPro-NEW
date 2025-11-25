@@ -1,4 +1,4 @@
-import { apiRequest } from './queryClient';
+import { pushService } from "@/services/push";
 
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -44,8 +44,7 @@ export const subscribeToPushNotifications = async (): Promise<boolean> => {
 
     const registration = await navigator.serviceWorker.ready;
     
-    const response = await fetch('/api/push/public-key');
-    const { publicKey } = await response.json();
+    const publicKey = await pushService.getPublicKey();
     
     if (!publicKey) {
       throw new Error('VAPID public key tidak tersedia');
@@ -59,7 +58,7 @@ export const subscribeToPushNotifications = async (): Promise<boolean> => {
     const p256dh = subscription.getKey('p256dh');
     const auth = subscription.getKey('auth');
     
-    await apiRequest('POST', '/api/push/subscribe', {
+    await pushService.subscribe({
       endpoint: subscription.endpoint,
       keys: {
         p256dh: btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(p256dh!)))),
@@ -84,9 +83,7 @@ export const unsubscribeFromPushNotifications = async (): Promise<boolean> => {
       return false;
     }
 
-    await apiRequest('DELETE', '/api/push/unsubscribe', {
-      endpoint: subscription.endpoint,
-    });
+    await pushService.unsubscribe({ endpoint: subscription.endpoint });
 
     await subscription.unsubscribe();
     

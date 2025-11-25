@@ -1,0 +1,9 @@
+# robots.txt for Idachi Fitness
+User-agent: *
+Allow: /
+
+# Block irrelevant internal API and build assets directories
+Disallow: /api/
+Disallow: /assets/
+
+Sitemap: https://idachi.example/sitemap.xml

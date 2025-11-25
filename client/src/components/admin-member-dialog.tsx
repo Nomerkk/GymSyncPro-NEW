@@ -5,9 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAdminMembersActions } from "@/hooks/useAdminMembersActions";
 
 const memberSchema = z.object({
   firstName: z.string().min(1, "Nama depan diperlukan"),
@@ -26,7 +24,7 @@ interface AdminMemberDialogProps {
 }
 
 export default function AdminMemberDialog({ open, onOpenChange }: AdminMemberDialogProps) {
-  const { toast } = useToast();
+  const { createMember } = useAdminMembersActions();
 
   const form = useForm<MemberFormData>({
     resolver: zodResolver(memberSchema),
@@ -40,31 +38,13 @@ export default function AdminMemberDialog({ open, onOpenChange }: AdminMemberDia
     },
   });
 
-  const createMemberMutation = useMutation({
-    mutationFn: async (data: MemberFormData) => {
-      return await apiRequest("POST", "/api/admin/members", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
-      toast({
-        title: "Berhasil!",
-        description: "Member baru berhasil ditambahkan",
-      });
-      form.reset();
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal menambahkan member",
-        variant: "destructive",
-      });
-    },
-  });
-
   const onSubmit = (data: MemberFormData) => {
-    createMemberMutation.mutate(data);
+    createMember.mutate(data, {
+      onSuccess: () => {
+        form.reset();
+        onOpenChange(false);
+      },
+    });
   };
 
   return (
@@ -203,10 +183,10 @@ export default function AdminMemberDialog({ open, onOpenChange }: AdminMemberDia
               <Button
                 type="submit"
                 className="gym-gradient text-white"
-                disabled={createMemberMutation.isPending}
+                disabled={createMember.isPending}
                 data-testid="button-submit"
               >
-                {createMemberMutation.isPending ? "Menyimpan..." : "Tambah Member"}
+                {createMember.isPending ? "Menyimpan..." : "Tambah Member"}
               </Button>
             </div>
           </form>

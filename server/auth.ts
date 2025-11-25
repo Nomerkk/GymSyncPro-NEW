@@ -2,43 +2,96 @@ import type { Express } from "express";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
+import type { Request } from 'express';
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
-import type { User } from "@shared/schema";
+import type { User } from "../shared/schema";
 import connectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
+import { env } from "./config/index";
 
 const PgSession = connectPgSimple(session);
 
+const isAuthDebugEnabled = () => Boolean(env.auth.debugFlag) || env.isDevelopment;
+
 export async function setupAuth(app: Express) {
   // Require SESSION_SECRET in production for security
-  const sessionSecret = process.env.SESSION_SECRET;
+  const sessionSecret = env.auth.sessionSecret;
   
   if (!sessionSecret) {
-    if (process.env.NODE_ENV === "production") {
+    if (env.isProduction) {
       throw new Error("SESSION_SECRET environment variable is required in production for secure session management");
     }
     console.warn("⚠️  WARNING: Using default SESSION_SECRET in development. Set SESSION_SECRET env var for production!");
   }
 
+  // Respect proxy (e.g., when behind Render/Heroku/Nginx) so secure cookies aren't stripped
+  if (env.auth.trustProxy || env.isProduction) {
+    // Only set if not already set by caller
+    if (!app.get('trust proxy')) {
+      app.set('trust proxy', 1);
+    }
+  }
+
+  // Resolve environment and cookie flags
+  const resolvedNodeEnv = env.nodeEnv || (app.get('env') as string) || 'development';
+  const cookieSecure = (() => {
+    if (typeof env.auth.cookieSecure === 'string') {
+      return env.auth.cookieSecure === 'true';
+    }
+    return resolvedNodeEnv === 'production';
+  })();
+  const cookieSameSite: any = env.auth.cookieSameSite || 'lax';
+  const authDebugEnabled = isAuthDebugEnabled();
+
   // Session setup
-  app.use(
-    session({
-      store: new PgSession({
-        pool,
-        tableName: "sessions",
-        createTableIfMissing: false,
-      }),
+  let sessionStore: session.Store | undefined;
+
+  if (env.databaseUrl) {
+    sessionStore = new PgSession({
+      conString: env.databaseUrl,
+      tableName: "sessions",
+      createTableIfMissing: !env.isProduction,
+    });
+  } else {
+    console.warn("[auth] DATABASE_URL not set. Falling back to default in-memory session store; sessions will reset on restart.");
+  }
+
+  const sessionMiddleware = session({
+      name: 'sid',
+      store: sessionStore,
       secret: sessionSecret || "dev-secret-change-in-production",
       resave: false,
       saveUninitialized: false,
       cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: cookieSecure,
+        // Set via env COOKIE_SAME_SITE=none for cross-origin HTTPS setups
+        sameSite: cookieSameSite,
       },
-    })
-  );
+    });
+
+  // Middleware to log Set-Cookie diagnostics (dev / AUTH_DEBUG)
+  app.use((req, res, next) => {
+    const writeHead = res.writeHead;
+    (res as any).writeHead = function (...args: any[]) {
+      if (authDebugEnabled && req.path === '/api/login') {
+        const setCookie = res.getHeader('Set-Cookie');
+        console.warn('[AUTH_DEBUG] Response Set-Cookie just before send:', setCookie);
+      }
+      return (writeHead as any).apply(res, args as any);
+    } as any;
+    next();
+  });
+
+  app.use((req, _res, next) => {
+    if (authDebugEnabled && req.method === 'POST' && req.path === '/api/login') {
+      console.warn('[AUTH_DEBUG] Incoming login request cookies:', req.headers.cookie);
+    }
+    next();
+  });
+
+  app.use(sessionMiddleware);
 
   // Initialize passport
   app.use(passport.initialize());
@@ -91,8 +144,20 @@ export async function setupAuth(app: Express) {
 
 // Middleware to check if user is authenticated
 export function isAuthenticated(req: any, res: any, next: any) {
-  if (req.isAuthenticated()) {
+  if (req.isAuthenticated && req.isAuthenticated()) {
     return next();
+  }
+  // Optional verbose diagnostics in development or when AUTH_DEBUG=1
+  if (isAuthDebugEnabled()) {
+    const cookieHeader = req.headers?.cookie;
+    console.warn('[AUTH] Unauthorized request:', {
+      path: req.path,
+      method: req.method,
+      hasSession: Boolean((req as any).session),
+      sessionID: (req as any).sessionID,
+      cookiePresent: Boolean(cookieHeader),
+      cookieHeader,
+    });
   }
   res.status(401).json({ message: "Unauthorized" });
 }

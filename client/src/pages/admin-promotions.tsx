@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import PageHeader from "@/components/layout/page-header";
+import { usePromotions, usePromotionActions } from "@/hooks/usePromotions";
 import AdminLayout from "@/components/ui/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,29 +13,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Promotion } from "@/services/promotions";
 import { Plus, Pencil, Trash2, ImageIcon } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
 
-interface Promotion {
-  id: string;
-  title: string;
-  description?: string | null;
-  imageUrl?: string | null;
-  cta?: string | null;
-  ctaHref?: string | null;
-  isActive: boolean;
-  sortOrder: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
+// Promotion type moved to services layer
 
 export default function AdminPromotions() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const { data: promos, refetch } = useQuery<Promotion[]>({
-    queryKey: ["/api/admin/promotions"],
-  });
+  const { data: promos } = usePromotions(true);
+  const { create, update, remove, uploadImage } = usePromotionActions();
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Promotion | null>(null);
@@ -61,45 +51,23 @@ export default function AdminPromotions() {
     setOpen(true);
   };
 
-  const createMutation = useMutation({
-    mutationFn: async (payload: any) => {
-      const res = await apiRequest("POST", "/api/admin/promotions", payload);
-      // Body is not required for UI since we refetch; avoid JSON parse issues if server sends HTML by mistake
-      return { ok: res.ok } as const;
-    },
-    onSuccess: () => {
-      toast({ title: "Saved", description: "Promotion created" });
-      setOpen(false); resetForm(); refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/member/promotions"] });
-    },
-    onError: (e: any) => toast({ title: "Gagal", description: e.message, variant: "destructive" })
-  });
+  const createMutation = create;
+  const updateMutation = update;
+  const deleteMutation = remove;
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
-      const res = await apiRequest("PUT", `/api/admin/promotions/${id}`, payload);
-      return { ok: res.ok } as const;
-    },
-    onSuccess: () => {
-      toast({ title: "Updated", description: "Promotion updated" });
-      setOpen(false); resetForm(); refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/member/promotions"] });
-    },
-    onError: (e: any) => toast({ title: "Gagal", description: e.message, variant: "destructive" })
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("DELETE", `/api/admin/promotions/${id}`);
-      return { ok: res.ok } as const;
-    },
-    onSuccess: () => { toast({ title: "Deleted", description: "Promotion removed" }); refetch(); queryClient.invalidateQueries({ queryKey: ["/api/member/promotions"] }); },
-    onError: (e: any) => toast({ title: "Gagal", description: e.message, variant: "destructive" })
-  });
+  type PromotionPayload = {
+    title: string;
+    description?: string;
+    imageUrl?: string;
+    cta?: string;
+    ctaHref?: string;
+    isActive: boolean;
+    sortOrder: number;
+  };
 
   const onSubmit = () => {
-    const payload: any = {
-      title: form.title,
+    const payload: PromotionPayload = {
+      title: form.title || "",
       description: form.description || undefined,
       imageUrl: form.imageUrl || undefined,
       cta: form.cta || undefined,
@@ -136,17 +104,12 @@ export default function AdminPromotions() {
         reader.onerror = () => reject(new Error('Gagal membaca file'));
         reader.readAsDataURL(file);
       });
-      const res = await apiRequest('POST', '/api/admin/upload-image', { dataUrl });
-      const ct = res.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) {
-        throw new Error('Server tidak mengembalikan JSON yang valid untuk upload');
-      }
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || 'Gagal upload');
-      setForm((f) => ({ ...f, imageUrl: json.url }));
+      const { url } = await uploadImage.mutateAsync(dataUrl);
+      if (!url) throw new Error('URL tidak tersedia');
+      setForm((f) => ({ ...f, imageUrl: url }));
       toast({ title: 'Gambar terunggah' });
-    } catch (e: any) {
-      toast({ title: 'Upload gagal', description: e?.message || String(e), variant: 'destructive' });
+    } catch (e: unknown) {
+      toast({ title: 'Upload gagal', description: getErrorMessage(e, 'Terjadi kesalahan saat upload'), variant: 'destructive' });
     } finally {
       setUploading(false);
     }
@@ -155,12 +118,14 @@ export default function AdminPromotions() {
   return (
     <AdminLayout user={user!} notificationCount={0}>
       <div className="space-y-4 bg-[#0F172A] min-h-screen -m-6 p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">Promotions</h1>
-          <Button onClick={onAdd} className="bg-emerald-600 hover:bg-emerald-500">
-            <Plus className="h-4 w-4 mr-2" /> New Promotion
-          </Button>
-        </div>
+        <PageHeader
+          title={<span className="text-xl text-white">Promotions</span>}
+          actions={
+            <Button onClick={onAdd} className="bg-emerald-600 hover:bg-emerald-500">
+              <Plus className="h-4 w-4 mr-2" /> New Promotion
+            </Button>
+          }
+        />
 
         <Card className="border-0 bg-[#1E293B] shadow-xl">
           <CardHeader className="pb-3">
@@ -186,7 +151,7 @@ export default function AdminPromotions() {
                       <TableRow key={p.id} className="hover:bg-[#0B1220]">
                         <TableCell>
                           <div className="w-16 h-10 rounded-md overflow-hidden bg-[#0B1220] flex items-center justify-center border border-gray-700">
-                            {p.imageUrl ? <img src={p.imageUrl} alt="banner" className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-gray-500" />}
+                            {p.imageUrl ? <img src={p.imageUrl} alt="banner" className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <ImageIcon className="w-5 h-5 text-gray-500" />}
                           </div>
                         </TableCell>
                         <TableCell className="text-white font-medium">{p.title}</TableCell>
@@ -224,7 +189,7 @@ export default function AdminPromotions() {
                   <Label className="text-gray-300">Banner Image</Label>
                   {form.imageUrl ? (
                     <div className="flex items-center gap-3">
-                      <img src={form.imageUrl} alt="preview" className="w-24 h-16 rounded-md object-cover border border-gray-700" />
+                      <img src={form.imageUrl} alt="preview" className="w-24 h-16 rounded-md object-cover border border-gray-700" loading="lazy" decoding="async" />
                       <Button type="button" variant="outline" onClick={() => setForm({ ...form, imageUrl: '' })}>Ganti</Button>
                     </div>
                   ) : (

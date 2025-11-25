@@ -9,10 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMembershipPlanActions } from "@/hooks/useMembershipPlans";
 import { X } from "lucide-react";
-import type { MembershipPlan } from "@shared/schema.ts";
 
 const membershipPlanSchema = z.object({
   name: z.string().min(1, "Nama paket diperlukan"),
@@ -29,16 +27,14 @@ const membershipPlanSchema = z.object({
 
 type MembershipPlanFormData = z.infer<typeof membershipPlanSchema>;
 
-interface AdminMembershipPlanDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  plan?: MembershipPlan | null;
-}
+import { AdminMembershipPlanDialogProps, MembershipPlanFormPayload, getErrorMessage } from "@/types/adminDialogs";
+// Removed local AdminMembershipPlanDialogProps interface in favor of shared types.
 
 export default function AdminMembershipPlanDialog({ open, onOpenChange, plan }: AdminMembershipPlanDialogProps) {
   const { toast } = useToast();
   const [featureInput, setFeatureInput] = useState("");
   const [features, setFeatures] = useState<string[]>([]);
+  const { create, update } = useMembershipPlanActions();
 
   const form = useForm<MembershipPlanFormData>({
     resolver: zodResolver(membershipPlanSchema),
@@ -76,66 +72,36 @@ export default function AdminMembershipPlanDialog({ open, onOpenChange, plan }: 
     }
   }, [plan, form]);
 
-  const createPlanMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await apiRequest("POST", "/api/admin/membership-plans", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/membership-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/membership-plans"] });
-      toast({
-        title: "Berhasil!",
-        description: plan ? "Paket membership berhasil diperbarui" : "Paket membership baru berhasil dibuat",
-      });
-      form.reset();
-      setFeatures([]);
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal menyimpan paket membership",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updatePlanMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await apiRequest("PUT", `/api/admin/membership-plans/${plan?.id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/membership-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/membership-plans"] });
-      toast({
-        title: "Berhasil!",
-        description: "Paket membership berhasil diperbarui",
-      });
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal memperbarui paket membership",
-        variant: "destructive",
-      });
-    },
-  });
+  // Mutations now provided by hook; handle local UI onSuccess below
 
   const onSubmit = (data: MembershipPlanFormData) => {
-    const planData = {
+    const planData: MembershipPlanFormPayload = {
       name: data.name,
       description: data.description || null,
-      price: data.price,
+      price: Number(data.price),
       durationMonths: Number(data.durationMonths),
       features: features.length > 0 ? features : null,
       active: data.active,
     };
 
     if (plan) {
-      updatePlanMutation.mutate(planData);
+      update.mutate({ id: plan.id, data: planData }, {
+        onSuccess: () => {
+          toast({ title: "Berhasil!", description: "Paket membership berhasil diperbarui" });
+          onOpenChange(false);
+        },
+        onError: (error) => toast({ title: "Error", description: getErrorMessage(error, "Gagal memperbarui paket membership"), variant: "destructive" }),
+      });
     } else {
-      createPlanMutation.mutate(planData);
+      create.mutate(planData, {
+        onSuccess: () => {
+          toast({ title: "Berhasil!", description: "Paket membership baru berhasil dibuat" });
+          form.reset();
+          setFeatures([]);
+          onOpenChange(false);
+        },
+        onError: (error) => toast({ title: "Error", description: getErrorMessage(error, "Gagal menyimpan paket membership"), variant: "destructive" }),
+      });
     }
   };
 
@@ -327,10 +293,10 @@ export default function AdminMembershipPlanDialog({ open, onOpenChange, plan }: 
               <Button
                 type="submit"
                 className="gym-gradient text-white"
-                disabled={createPlanMutation.isPending || updatePlanMutation.isPending}
+                disabled={create.isPending || update.isPending}
                 data-testid="button-submit"
               >
-                {(createPlanMutation.isPending || updatePlanMutation.isPending)
+                {(create.isPending || update.isPending)
                   ? "Menyimpan..."
                   : plan
                   ? "Update Paket"

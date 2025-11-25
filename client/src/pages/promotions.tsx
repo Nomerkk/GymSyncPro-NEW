@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import BottomNavigation from "@/components/ui/bottom-navigation";
 import BrandTopbar from "@/components/brand-topbar";
-import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { getQueryFn } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 interface Promo {
   id: string;
@@ -36,9 +36,9 @@ export default function PromotionsPage() {
   useEffect(() => {
     if (error) {
       console.warn("/api/member/promotions error:", error);
-      toast({ title: "Tidak bisa memuat promos", description: String((error as any)?.message || error), variant: "destructive" });
+      toast({ title: "Tidak bisa memuat promos", description: getErrorMessage(error, "Gagal memuat promotions"), variant: "destructive" });
     }
-  }, [error]);
+  }, [error, toast]);
 
   // Auto-slide every ~4.5s
   useEffect(() => {
@@ -135,7 +135,7 @@ export default function PromotionsPage() {
                   >
                     <div className="absolute inset-0 rounded-2xl bg-white shadow-[0_8px_30px_rgba(0,0,0,0.18)] p-2">
                       <div className="relative w-full h-full rounded-xl overflow-hidden">
-                        <img src={p.imageUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                        <img src={p.imageUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" loading="lazy" decoding="async" />
                       </div>
                     </div>
                   </a>
@@ -185,7 +185,7 @@ export default function PromotionsPage() {
               >
                 <div className="relative h-28 md:h-40 p-2">
                   <div className="relative w-full h-full rounded-xl overflow-hidden">
-                    <img src={p.imageUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+                    <img src={p.imageUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" draggable={false} loading="lazy" decoding="async" />
                   </div>
                 </div>
                 <div className="p-3 md:p-4">

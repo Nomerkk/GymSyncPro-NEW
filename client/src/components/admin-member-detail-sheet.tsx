@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAdminMembersActions } from "@/hooks/useAdminMembersActions";
 import { Activity, Mail, MessageCircle, Pencil, Trash2, UserCheck, UserX } from "lucide-react";
 import { format } from "date-fns";
 import AdminEditMemberDialog from "./admin-edit-member-dialog";
@@ -37,7 +35,7 @@ type Props = {
 };
 
 export default function AdminMemberDetailSheet({ open, onOpenChange, member }: Props) {
-  const { toast } = useToast();
+  const { suspendMember, activateMember, deleteMember } = useAdminMembersActions();
   const [showEdit, setShowEdit] = useState(false);
   const [showWa, setShowWa] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
@@ -52,51 +50,24 @@ export default function AdminMemberDetailSheet({ open, onOpenChange, member }: P
 
   const name = useMemo(() => (member ? `${member.firstName || ""} ${member.lastName || ""}`.trim() || member.username || "Member" : "Member"), [member]);
 
-  const suspendMutation = useMutation({
-    mutationFn: async () => {
-      if (!member) throw new Error("No member");
-      return apiRequest("PUT", `/api/admin/members/${member.id}/suspend`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
-      toast({ title: "Member suspended" });
-      onOpenChange(false);
-    },
-    onError: (err: any) => toast({ title: "Gagal suspend", description: err?.message || "Error", variant: "destructive" })
-  });
-
-  const activateMutation = useMutation({
-    mutationFn: async () => {
-      if (!member) throw new Error("No member");
-      return apiRequest("PUT", `/api/admin/members/${member.id}/activate`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
-      toast({ title: "Member activated" });
-      onOpenChange(false);
-    },
-    onError: (err: any) => toast({ title: "Gagal activate", description: err?.message || "Error", variant: "destructive" })
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!member) throw new Error("No member");
-      return apiRequest("DELETE", `/api/admin/members/${member.id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
-      toast({ title: "Member deleted" });
-      onOpenChange(false);
-    },
-    onError: (err: any) => toast({ title: "Gagal hapus", description: err?.message || "Error", variant: "destructive" })
-  });
+  const handleSuspend = () => {
+    if (!member) return;
+    suspendMember.mutate(member.id, { onSuccess: () => onOpenChange(false) });
+  };
+  const handleActivate = () => {
+    if (!member) return;
+    activateMember.mutate(member.id, { onSuccess: () => onOpenChange(false) });
+  };
+  const handleDelete = () => {
+    if (!member) return;
+    if (confirm('Delete this member?')) {
+      deleteMember.mutate(member.id, { onSuccess: () => onOpenChange(false) });
+    }
+  };
 
   const statusBadge = () => {
     const status = member?.membership?.status === "active" ? "Active" : member?.membership?.status === "expired" ? "Expired" : (member?.membership?.status || "Unknown");
-    let variant: any = "outline";
+    let variant: BadgeProps["variant"] = "outline";
     if (status === "Active") variant = "default"; else if (status === "Expired") variant = "destructive";
     return <Badge variant={variant}>{status}</Badge>;
   };
@@ -154,17 +125,17 @@ export default function AdminMemberDetailSheet({ open, onOpenChange, member }: P
               <Button variant="outline" disabled={!member?.phone} onClick={() => setShowWa(true)}><MessageCircle className="mr-2 h-4 w-4 text-green-600"/>WhatsApp</Button>
               <Button variant="outline" disabled={!member?.email} onClick={() => setShowEmail(true)}><Mail className="mr-2 h-4 w-4 text-blue-600"/>Email</Button>
               {member?.active === false ? (
-                <Button variant="outline" onClick={() => activateMutation.mutate()}><UserCheck className="mr-2 h-4 w-4 text-green-600"/>Aktifkan Kembali</Button>
+                <Button variant="outline" onClick={handleActivate} disabled={activateMember.isPending}><UserCheck className="mr-2 h-4 w-4 text-green-600"/>{activateMember.isPending ? 'Mengaktifkan...' : 'Aktifkan Kembali'}</Button>
               ) : (
-                <Button variant="outline" onClick={() => suspendMutation.mutate()}><UserX className="mr-2 h-4 w-4 text-orange-600"/>Cuti</Button>
+                <Button variant="outline" onClick={handleSuspend} disabled={suspendMember.isPending}><UserX className="mr-2 h-4 w-4 text-orange-600"/>{suspendMember.isPending ? 'Memproses...' : 'Cuti'}</Button>
               )}
               <Button
                 variant="destructive"
-                disabled={member?.membership?.status === 'active'}
+                disabled={member?.membership?.status === 'active' || deleteMember.isPending}
                 title={member?.membership?.status === 'active' ? 'Tidak bisa hapus saat membership masih aktif' : undefined}
-                onClick={() => { if (confirm('Delete this member?')) deleteMutation.mutate(); }}
+                onClick={handleDelete}
               >
-                <Trash2 className="mr-2 h-4 w-4"/>Delete
+                <Trash2 className="mr-2 h-4 w-4"/>{deleteMember.isPending ? 'Menghapus...' : 'Delete'}
               </Button>
             </div>
             {member?.membership?.status === 'active' && (

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { checkinsService } from "@/services/checkins";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -13,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import CheckInNotificationPopup from "@/components/checkin-notification-popup";
-import { QrCode, User, Calendar, CreditCard, Clock, CheckCircle2, Camera, XCircle } from "lucide-react";
+import { QrCode, Calendar, CreditCard, CheckCircle2, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { Html5Qrcode } from "html5-qrcode";
+import { getErrorMessage } from "@/lib/errors";
+import type { CheckinValidationResult } from "@/services/checkins";
 
 interface AdminCheckInModalProps {
   open: boolean;
@@ -23,52 +24,23 @@ interface AdminCheckInModalProps {
   onSuccess?: () => void;
 }
 
-export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminCheckInModalProps) {
+// Use shared CheckinValidationResult type from services; remove local duplicates
+
+export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminCheckInModalProps): JSX.Element {
   const { toast } = useToast();
-  const [qrCode, setQrCode] = useState("");
-  const [memberData, setMemberData] = useState<any>(null);
+  // qrCode local state removed – we pass decoded value directly to mutation
+  const [memberData, setMemberData] = useState<CheckinValidationResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
-  const [notificationData, setNotificationData] = useState<any>(null);
+  const [notificationData, setNotificationData] = useState<CheckinValidationResult | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef<boolean>(false);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const lastScanAtRef = useRef<number>(0);
+  const lastCodeRef = useRef<string | null>(null);
   const scannerDivId = "qr-reader";
 
-  const validateMutation = useMutation({
-    mutationFn: async (code: string) => {
-      const res = await apiRequest("POST", "/api/admin/checkin/validate", { qrCode: code });
-      const ct = res.headers.get("content-type") || "";
-      if (!ct.includes("application/json")) {
-        const text = await res.text();
-        throw new Error(text && text.startsWith("<!DOCTYPE") ? "Sesi admin berakhir atau rute tidak tersedia. Refresh halaman dan coba lagi." : (text || "Respon tidak valid dari server"));
-      }
-      return await res.json();
-    },
-    onSuccess: (data) => {
-      setMemberData(data);
-      
-      // Show notification popup
-      setNotificationData(data);
-      setShowNotification(true);
-      
-      if (data.success) {
-        if (onSuccess) {
-          onSuccess();
-        }
-      }
-      
-      // Stop scanner after scan
-      stopScanner();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Validasi Gagal",
-        description: error.message || "QR code tidak valid atau sudah expired",
-        variant: "destructive",
-      });
-      setMemberData(null);
-    },
-  });
+  // Using direct service with AbortSignal for validation
 
 
   const startScanner = async () => {
@@ -93,8 +65,13 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
             return;
           }
           
+          // Simple debounce: ignore scans within 300ms
+          const now = Date.now();
+          if (now - lastScanAtRef.current < 300) return;
+          lastScanAtRef.current = now;
+
           processingRef.current = true;
-          setQrCode(decodedText);
+          // we no longer store raw decoded text; process immediately
           
           let qrCodeValue = decodedText;
           if (decodedText.includes('/checkin/verify/')) {
@@ -104,15 +81,49 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
             const parts = decodedText.split('/');
             qrCodeValue = parts[parts.length - 1] || decodedText;
           }
+          // De-duplicate same code back-to-back
+          if (lastCodeRef.current === qrCodeValue) {
+            processingRef.current = false;
+            return;
+          }
+          lastCodeRef.current = qrCodeValue;
           
           stopScanner();
-          
-          validateMutation.mutate(qrCodeValue);
+          // Abort any in-flight validation
+          if (requestControllerRef.current) {
+            requestControllerRef.current.abort();
+          }
+          const controller = new AbortController();
+          requestControllerRef.current = controller;
+
+          const isAbort = (e: unknown) => (
+            e instanceof DOMException && e.name === 'AbortError'
+          ) || (
+            typeof e === 'object' && e !== null && 'name' in e && (e as { name?: string }).name === 'AbortError'
+          );
+
+          checkinsService.validate(qrCodeValue, { signal: controller.signal })
+            .then((data) => {
+              setMemberData(data);
+              setNotificationData(data);
+              setShowNotification(true);
+              if (data.success && onSuccess) onSuccess();
+              stopScanner();
+            })
+            .catch((error) => {
+              if (isAbort(error)) {
+                return; // ignore aborts
+              }
+              toast({ title: "Validasi Gagal", description: getErrorMessage(error, "QR code tidak valid atau sudah expired"), variant: "destructive" });
+              setMemberData(null);
+            })
+            .finally(() => {
+              processingRef.current = false;
+            });
         },
-        (errorMessage) => {
-        }
+        () => {}
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error("Error starting scanner:", err);
       toast({
         title: "Error",
@@ -141,9 +152,12 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
 
   const handleClose = async () => {
     await stopScanner();
-    setQrCode("");
+    // removed undefined setQrCode call
     setMemberData(null);
     processingRef.current = false;
+    if (requestControllerRef.current) {
+      requestControllerRef.current.abort();
+    }
     onClose();
   };
 
@@ -177,7 +191,7 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
     };
   }, []);
 
-  const getMembershipStatus = (endDate: Date) => {
+  const getMembershipStatus = (endDate: string | Date) => {
     const now = new Date();
     const daysUntilExpiry = Math.ceil((new Date(endDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
@@ -231,7 +245,7 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
                       CHECK-IN BERHASIL
                     </h3>
                     <p className="text-sm text-muted-foreground mt-2" data-testid="text-checkin-time">
-                      {format(new Date(memberData.checkInTime), "HH:mm, dd MMMM yyyy")}
+                      {memberData.checkInTime ? format(new Date(memberData.checkInTime), "HH:mm, dd MMMM yyyy") : ""}
                     </p>
                   </div>
                 ) : (
@@ -251,7 +265,7 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
                 <div className="border border-border rounded-lg p-4 space-y-4 bg-muted/30">
                   <div className="flex items-center gap-4">
                     <Avatar className="h-16 w-16" data-testid="img-member-avatar">
-                      <AvatarImage src={memberData.user?.profileImageUrl} />
+                      <AvatarImage src={memberData.user?.profileImageUrl ?? undefined} />
                       <AvatarFallback>
                         {`${memberData.user?.firstName?.[0] || ''}${memberData.user?.lastName?.[0] || ''}`}
                       </AvatarFallback>
@@ -312,7 +326,7 @@ export default function AdminCheckInModal({ open, onClose, onSuccess }: AdminChe
       {/* Notification Popup */}
       <CheckInNotificationPopup
         show={showNotification}
-        data={notificationData}
+        data={notificationData ?? { success: false, message: "", user: null, membership: null }}
         onClose={() => {
           setShowNotification(false);
           setNotificationData(null);

@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { env } from "./config/index";
 
 export function normalizePhone(input?: string): string | undefined {
   if (!input) return undefined;
@@ -12,8 +13,8 @@ export function normalizePhone(input?: string): string | undefined {
 }
 
 export async function sendWhatsAppText(toPhone: string, body: string, previewUrl = false) {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = env.whatsapp.token;
+  const phoneNumberId = env.whatsapp.phoneNumberId;
   if (!token || !phoneNumberId) {
     const err = new Error("WhatsApp Cloud API is not configured");
     // @ts-ignore

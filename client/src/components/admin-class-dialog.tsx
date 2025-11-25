@@ -1,18 +1,19 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { uploadsService } from "@/services/uploads";
+import { useClassActions } from "@/hooks/useClasses";
 import { Loader2 } from "lucide-react";
 import type { GymClass } from "@shared/schema.ts";
 import { useRef, useState as useReactState } from "react";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 const classSchema = z.object({
   name: z.string().min(1, "Nama class diperlukan"),
@@ -34,6 +35,7 @@ interface AdminClassDialogProps {
 export default function AdminClassDialog({ open, onOpenChange, gymClass }: AdminClassDialogProps) {
   const { toast } = useToast();
   const isEditing = !!gymClass;
+    const { create, update } = useClassActions();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useReactState(false);
   const [preview, setPreview] = useReactState<string | undefined>(undefined);
@@ -55,7 +57,7 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
       form.reset({
         name: gymClass.name || "",
         description: gymClass.description || "",
-        imageUrl: (gymClass as any).imageUrl || "",
+        imageUrl: gymClass.imageUrl || "",
         instructorName: gymClass.instructorName || "",
         schedule: gymClass.schedule || "",
         maxCapacity: gymClass.maxCapacity?.toString() || "",
@@ -72,68 +74,35 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
     }
   }, [gymClass, form]);
 
-  const createMutation = useMutation({
-    mutationFn: async (data: ClassFormData) => {
-      const payload = {
-        ...data,
-        imageUrl: data.imageUrl || undefined,
-        maxCapacity: parseInt(data.maxCapacity),
-        currentEnrollment: 0,
-        active: true,
-      };
-      return await apiRequest("POST", "/api/admin/classes", payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/classes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
-      toast({
-        title: "Berhasil!",
-        description: "Class berhasil ditambahkan",
-      });
-      onOpenChange(false);
-      form.reset();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal menambahkan class",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: ClassFormData) => {
-      const payload = {
-        ...data,
-        imageUrl: data.imageUrl || undefined,
-        maxCapacity: parseInt(data.maxCapacity),
-      };
-      return await apiRequest("PUT", `/api/admin/classes/${gymClass?.id}`, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/classes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
-      toast({
-        title: "Berhasil!",
-        description: "Class berhasil diupdate",
-      });
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal mengupdate class",
-        variant: "destructive",
-      });
-    },
-  });
+  // Mutations moved to hook, with shared invalidation
 
   const onSubmit = (data: ClassFormData) => {
-    if (isEditing) {
-      updateMutation.mutate(data);
+    const payload = {
+      ...data,
+      imageUrl: data.imageUrl || undefined,
+      maxCapacity: parseInt(data.maxCapacity),
+      instructorName: data.instructorName,
+      name: data.name,
+      description: data.description || undefined,
+      schedule: data.schedule,
+    };
+    if (isEditing && gymClass?.id) {
+      update.mutate({ id: gymClass.id, data: payload }, {
+        onSuccess: () => {
+          toast({ title: "Berhasil!", description: "Class berhasil diupdate" });
+          onOpenChange(false);
+        },
+        onError: (error) => toast({ title: "Error", description: getErrorMessage(error, "Gagal mengupdate class"), variant: "destructive" }),
+      });
     } else {
-      createMutation.mutate(data);
+      create.mutate(payload, {
+        onSuccess: () => {
+          toast({ title: "Berhasil!", description: "Class berhasil ditambahkan" });
+          onOpenChange(false);
+          form.reset();
+        },
+        onError: (error) => toast({ title: "Error", description: getErrorMessage(error, "Gagal menambahkan class"), variant: "destructive" }),
+      });
     }
   };
 
@@ -151,12 +120,11 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
       setPreview(dataUrl);
       try {
         setUploading(true);
-        const res = await apiRequest('POST', '/api/admin/upload-image', { dataUrl });
-        const json = await res.json();
-        form.setValue('imageUrl', json.url, { shouldDirty: true });
+        const { url } = await uploadsService.uploadImage(dataUrl);
+        form.setValue('imageUrl', url, { shouldDirty: true });
         toast({ title: 'Gambar terunggah', description: 'Poster berhasil diunggah.' });
-      } catch (err: any) {
-        toast({ title: 'Gagal unggah', description: err?.message || 'Tidak bisa mengunggah gambar', variant: 'destructive' });
+      } catch (err) {
+        toast({ title: 'Gagal unggah', description: getErrorMessage(err, 'Tidak bisa mengunggah gambar'), variant: 'destructive' });
       } finally {
         setUploading(false);
       }
@@ -187,11 +155,10 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
                   {uploading ? 'Mengunggah…' : 'Pilih Gambar'}
                 </Button>
               </div>
-              <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleFileChange} />
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
               {(preview || form.watch('imageUrl')) && (
                 <div className="aspect-[16/9] w-full overflow-hidden rounded-md border border-border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={preview || form.watch('imageUrl')!} alt="Poster" className="w-full h-full object-cover" />
+                  <img src={preview || form.watch('imageUrl')!} alt="Poster" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                 </div>
               )}
             </div>
@@ -222,7 +189,6 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
                   <FormLabel>Nama Instruktur *</FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder="Contoh: Sarah Johnson" 
                       {...field} 
                       data-testid="input-class-instructor"
                     />
@@ -231,7 +197,6 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="description"
@@ -302,10 +267,10 @@ export default function AdminClassDialog({ open, onOpenChange, gymClass }: Admin
               <Button
                 type="submit"
                 className="gym-gradient text-white"
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={create.isPending || update.isPending}
                 data-testid="button-submit-class"
               >
-                {(createMutation.isPending || updateMutation.isPending) && (
+                {(create.isPending || update.isPending) && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 {isEditing ? "Update" : "Tambah Class"}

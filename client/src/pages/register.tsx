@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, User, Mail, Phone, Lock, UserPlus, ArrowRight, CheckCircle2, Send } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import CameraSelfie from "@/components/CameraSelfie";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
@@ -59,6 +59,9 @@ export default function Register() {
     return { strength, label: "Kuat", color: "bg-green-500" };
   }, [password]);
 
+  const { registerVerified, sendVerificationCode, checkVerificationCode } = useAuthActions();
+  const registerMutation = registerVerified;
+
   const handleSendCode = async () => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast({
@@ -79,22 +82,20 @@ export default function Register() {
     }
 
     setIsSendingCode(true);
-    try {
-      await apiRequest("POST", "/api/send-verification-code", { email });
-      setCodeSent(true);
-      toast({
-        title: "Kode Terkirim!",
-        description: "Kode verifikasi telah dikirim ke email Anda",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Gagal Mengirim Kode",
-        description: error.message || "Terjadi kesalahan saat mengirim kode verifikasi",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSendingCode(false);
-    }
+    sendVerificationCode.mutate(email, {
+      onSuccess: () => {
+        setCodeSent(true);
+        toast({ title: "Kode Terkirim!", description: "Kode verifikasi telah dikirim ke email Anda" });
+      },
+      onError: (error: unknown) => {
+        toast({
+          title: "Gagal Mengirim Kode",
+          description: getErrorMessage(error, "Terjadi kesalahan saat mengirim kode verifikasi"),
+          variant: "destructive",
+        });
+      },
+      onSettled: () => setIsSendingCode(false),
+    });
   };
 
   const handleVerifyCode = async () => {
@@ -107,45 +108,21 @@ export default function Register() {
       return;
     }
 
-    try {
-      await apiRequest("POST", "/api/check-verification-code", { 
-        email, 
-        verificationCode 
-      });
-      setEmailVerified(true);
-      toast({
-        title: "Email Terverifikasi!",
-        description: "Silakan lanjutkan mengisi form registrasi",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Verifikasi Gagal",
-        description: error.message || "Kode verifikasi tidak valid atau sudah kadaluarsa",
-        variant: "destructive",
-      });
-    }
+    checkVerificationCode.mutate({ email, code: verificationCode }, {
+      onSuccess: () => {
+        setEmailVerified(true);
+        toast({ title: "Email Terverifikasi!", description: "Silakan lanjutkan mengisi form registrasi" });
+      },
+      onError: (error: unknown) => {
+        toast({
+          title: "Verifikasi Gagal",
+          description: getErrorMessage(error, "Kode verifikasi tidak valid atau sudah kadaluarsa"),
+          variant: "destructive",
+        });
+      },
+    });
   };
 
-  const registerMutation = useMutation({
-    mutationFn: async (data: RegisterFormData) => {
-      return await apiRequest("POST", "/api/register-verified", data);
-    },
-    onSuccess: async (response: any) => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({
-        title: "Registrasi berhasil",
-        description: "Selamat datang di Idachi Fitness!",
-      });
-      setLocation("/");
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Registrasi gagal",
-        description: error.message || "Terjadi kesalahan saat registrasi",
-        variant: "destructive",
-      });
-    },
-  });
 
   const onSubmit = (data: RegisterFormData) => {
     if (!emailVerified) {
@@ -156,7 +133,19 @@ export default function Register() {
       });
       return;
     }
-    registerMutation.mutate(data);
+    registerMutation.mutate(data, {
+      onSuccess: () => {
+        toast({ title: "Registrasi berhasil", description: "Selamat datang di Idachi Fitness!" });
+        setLocation("/");
+      },
+      onError: (error: unknown) => {
+        toast({
+          title: "Registrasi gagal",
+          description: getErrorMessage(error, "Terjadi kesalahan saat registrasi"),
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   return (

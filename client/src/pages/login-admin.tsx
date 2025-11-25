@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+ 
+import { queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, User, Lock, ShieldCheck, ArrowRight, Shield } from "lucide-react";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
@@ -28,40 +30,20 @@ export default function LoginAdmin() {
     },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (data: LoginFormData) => {
-      return await apiRequest("POST", "/api/login", data);
-    },
-    onSuccess: async (response: any) => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      
-      if (response.user && response.user.role !== 'admin') {
-        toast({
-          title: "Akses Ditolak",
-          description: "Halaman ini khusus untuk administrator",
-          variant: "destructive",
-        });
-        setLocation("/");
-        return;
-      }
-      
-      toast({
-        title: "Login Admin Berhasil",
-        description: "Selamat datang kembali, Administrator!",
-      });
-      setLocation("/");
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Login Gagal",
-        description: error.message || "Username atau password salah",
-        variant: "destructive",
-      });
-    },
-  });
+  const { login } = useAuthActions();
+  const loginMutation = login;
 
   const onSubmit = (data: LoginFormData) => {
-    loginMutation.mutate(data);
+    loginMutation.mutate(data, {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+        toast({ title: "Login berhasil" });
+        setLocation("/admin/overview");
+      },
+      onError: (error: unknown) => {
+        toast({ title: "Login gagal", description: getErrorMessage(error, "Silakan periksa kredensial Anda"), variant: "destructive" });
+      }
+    });
   };
 
   return (

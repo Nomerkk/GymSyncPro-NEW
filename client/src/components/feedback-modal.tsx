@@ -8,9 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { feedbacksService } from "@/services/feedbacks";
 import { useToast } from "@/hooks/use-toast";
 import { Star } from "lucide-react";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 const feedbackSchema = z.object({
   subject: z.string().min(1, "Subject is required"),
@@ -41,7 +43,7 @@ export default function FeedbackModal({ open, onOpenChange }: FeedbackModalProps
 
   const feedbackMutation = useMutation({
     mutationFn: async (data: FeedbackFormData) => {
-      return await apiRequest("POST", "/api/feedbacks", data);
+      await feedbacksService.create(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
@@ -53,10 +55,10 @@ export default function FeedbackModal({ open, onOpenChange }: FeedbackModalProps
       setRating(0);
       onOpenChange(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Failed to Submit",
-        description: error.message || "Something went wrong",
+        description: getErrorMessage(error, "Something went wrong"),
         variant: "destructive",
       });
     },

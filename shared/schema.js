@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.insertNotificationSchema = exports.insertPasswordResetTokenSchema = exports.insertOneTimeQrCodeSchema = exports.insertPtSessionAttendanceSchema = exports.insertPtSessionPackageSchema = exports.insertPtBookingSchema = exports.insertPersonalTrainerSchema = exports.insertFeedbackSchema = exports.insertPaymentSchema = exports.insertCheckInSchema = exports.insertClassBookingSchema = exports.insertGymClassSchema = exports.insertMembershipSchema = exports.insertMembershipPlanSchema = exports.loginSchema = exports.registerSchema = exports.insertUserSchema = exports.pushSubscriptionsRelations = exports.notificationsRelations = exports.passwordResetTokensRelations = exports.oneTimeQrCodesRelations = exports.ptSessionAttendanceRelations = exports.ptSessionPackagesRelations = exports.ptBookingsRelations = exports.personalTrainersRelations = exports.feedbacksRelations = exports.paymentsRelations = exports.checkInsRelations = exports.classBookingsRelations = exports.gymClassesRelations = exports.membershipsRelations = exports.membershipPlansRelations = exports.usersRelations = exports.pushSubscriptions = exports.notifications = exports.passwordResetTokens = exports.oneTimeQrCodes = exports.ptSessionAttendance = exports.ptSessionPackages = exports.ptBookings = exports.personalTrainers = exports.feedbacks = exports.payments = exports.checkIns = exports.classBookings = exports.gymClasses = exports.memberships = exports.membershipPlans = exports.users = exports.sessions = void 0;
-exports.cookieSettingsSchema = exports.cookiePreferencesSchema = exports.verifyEmailSchema = exports.resetPasswordSchema = exports.forgotPasswordRequestSchema = exports.insertPushSubscriptionSchema = void 0;
+exports.insertPasswordResetTokenSchema = exports.insertOneTimeQrCodeSchema = exports.insertPtSessionAttendanceSchema = exports.insertPtSessionPackageSchema = exports.insertPtBookingSchema = exports.insertPersonalTrainerSchema = exports.insertFeedbackSchema = exports.insertPaymentSchema = exports.insertCheckInSchema = exports.insertClassBookingSchema = exports.insertGymClassSchema = exports.insertMembershipSchema = exports.insertMembershipPlanSchema = exports.loginSchema = exports.registerSchema = exports.insertUserSchema = exports.pushSubscriptionsRelations = exports.notificationsRelations = exports.passwordResetTokensRelations = exports.oneTimeQrCodesRelations = exports.ptSessionAttendanceRelations = exports.ptSessionPackagesRelations = exports.ptBookingsRelations = exports.personalTrainersRelations = exports.feedbacksRelations = exports.paymentsRelations = exports.checkInsRelations = exports.classBookingsRelations = exports.gymClassesRelations = exports.membershipsRelations = exports.membershipPlansRelations = exports.usersRelations = exports.promotions = exports.pushSubscriptions = exports.notifications = exports.passwordResetTokens = exports.oneTimeQrCodes = exports.ptSessionAttendance = exports.ptSessionPackages = exports.ptBookings = exports.personalTrainers = exports.feedbacks = exports.payments = exports.checkIns = exports.classBookings = exports.gymClasses = exports.memberships = exports.membershipPlans = exports.users = exports.sessions = void 0;
+exports.cookieSettingsSchema = exports.cookiePreferencesSchema = exports.verifyEmailSchema = exports.resetPasswordSchema = exports.forgotPasswordRequestSchema = exports.insertPromotionSchema = exports.insertPushSubscriptionSchema = exports.insertNotificationSchema = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const pg_core_1 = require("drizzle-orm/pg-core");
 const drizzle_orm_2 = require("drizzle-orm");
@@ -62,6 +62,7 @@ exports.gymClasses = (0, pg_core_1.pgTable)("gym_classes", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     name: (0, pg_core_1.varchar)("name").notNull(),
     description: (0, pg_core_1.text)("description"),
+    imageUrl: (0, pg_core_1.varchar)("image_url"),
     instructorName: (0, pg_core_1.varchar)("instructor_name").notNull(),
     schedule: (0, pg_core_1.varchar)("schedule").notNull(), // e.g., "Mon, Wed, Fri - 7:00 AM"
     maxCapacity: (0, pg_core_1.integer)("max_capacity").notNull(),
@@ -85,6 +86,7 @@ exports.checkIns = (0, pg_core_1.pgTable)("check_ins", {
     checkInTime: (0, pg_core_1.timestamp)("check_in_time").defaultNow(),
     checkOutTime: (0, pg_core_1.timestamp)("check_out_time"),
     qrCode: (0, pg_core_1.varchar)("qr_code").notNull(),
+    lockerNumber: (0, pg_core_1.varchar)("locker_number"),
     status: (0, pg_core_1.varchar)("status").default("active"), // active, completed
     createdAt: (0, pg_core_1.timestamp)("created_at").defaultNow(),
 });
@@ -215,6 +217,21 @@ exports.pushSubscriptions = (0, pg_core_1.pgTable)("push_subscriptions", {
     userAgent: (0, pg_core_1.text)("user_agent"),
     createdAt: (0, pg_core_1.timestamp)("created_at").defaultNow(),
 });
+// Promotions (admin-managed, shown to members)
+exports.promotions = (0, pg_core_1.pgTable)("promotions", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    title: (0, pg_core_1.varchar)("title").notNull(),
+    description: (0, pg_core_1.text)("description"),
+    imageUrl: (0, pg_core_1.varchar)("image_url"),
+    cta: (0, pg_core_1.varchar)("cta"),
+    ctaHref: (0, pg_core_1.varchar)("cta_href"),
+    startsAt: (0, pg_core_1.timestamp)("starts_at"),
+    endsAt: (0, pg_core_1.timestamp)("ends_at"),
+    isActive: (0, pg_core_1.boolean)("is_active").default(true),
+    sortOrder: (0, pg_core_1.integer)("sort_order").default(0),
+    createdAt: (0, pg_core_1.timestamp)("created_at").defaultNow(),
+    updatedAt: (0, pg_core_1.timestamp)("updated_at").defaultNow(),
+});
 // Relations
 exports.usersRelations = (0, drizzle_orm_2.relations)(exports.users, ({ many }) => ({
     memberships: many(exports.memberships),
@@ -342,6 +359,7 @@ exports.pushSubscriptionsRelations = (0, drizzle_orm_2.relations)(exports.pushSu
         references: [exports.users.id],
     }),
 }));
+// No complex relations needed for promotions currently
 // Insert schemas
 exports.insertUserSchema = (0, drizzle_zod_1.createInsertSchema)(exports.users).omit({
     id: true,
@@ -441,6 +459,11 @@ exports.insertNotificationSchema = (0, drizzle_zod_1.createInsertSchema)(exports
 exports.insertPushSubscriptionSchema = (0, drizzle_zod_1.createInsertSchema)(exports.pushSubscriptions).omit({
     id: true,
     createdAt: true,
+});
+exports.insertPromotionSchema = (0, drizzle_zod_1.createInsertSchema)(exports.promotions).omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
 });
 // Forgot password schemas
 exports.forgotPasswordRequestSchema = zod_1.z.object({

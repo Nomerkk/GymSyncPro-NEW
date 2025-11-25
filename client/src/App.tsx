@@ -1,11 +1,12 @@
 import { Switch, Route, Redirect } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { queryClient, enableAdminPersistence } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { useEffect, lazy, Suspense } from "react";
+import RoutePrefetch from "@/components/route-prefetch";
 const Login = lazy(() => import("@/pages/login"));
 const LoginAdmin = lazy(() => import("@/pages/login-admin"));
 const Register = lazy(() => import("@/pages/register"));
@@ -72,6 +73,7 @@ function Router() {
         <>
           <Route path="/" component={user?.role === 'admin' ? AdminOverview : MemberDashboard} />
           <Route path="/admin" component={AdminOverview} />
+          <Route path="/admin/overview" component={AdminOverview} />
           <Route path="/admin/members" component={AdminMembers} />
           <Route path="/admin/classes" component={AdminClasses} />
           <Route path="/admin/trainers" component={AdminTrainers} />
@@ -118,17 +120,28 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Suspense fallback={
-          <div className="min-h-screen flex items-center justify-center bg-background">
-            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-          </div>
-        }>
-          <Router />
+        {/* Hydrate & persist admin queries via localStorage */}
+        <AdminQueryPersistenceActivator />
+        {/* Avoid showing any loading UI during route transitions. */}
+        <Suspense fallback={null}>
+          <>
+            <Router />
+            {/* Preload admin routes/data in background for snappy sidebar navigation */}
+            <RoutePrefetch />
+          </>
         </Suspense>
         <CookieConsentBanner />
       </TooltipProvider>
     </QueryClientProvider>
   );
+}
+
+function AdminQueryPersistenceActivator() {
+  useEffect(() => {
+    // Set up persistence once on app start; allowlist ensures only admin queries/mutations are stored
+    enableAdminPersistence();
+  }, []);
+  return null;
 }
 
 export default App;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import PageHeader from "@/components/layout/page-header";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AdminLayout from "@/components/ui/admin-layout";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Dumbbell, CheckCircle, Clock, Search, AlertCircle, User } from "lucide-react";
+import { usePTSessionPackages, usePTSessionAttendance, usePTSessionActions } from "@/hooks/usePTSessions";
+import { Dumbbell, CheckCircle, Clock, Search } from "lucide-react";
 import { format } from "date-fns";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 export default function AdminPTSessions() {
   const { toast } = useToast();
@@ -27,51 +28,17 @@ export default function AdminPTSessions() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
       }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: packages, isLoading: packagesLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/pt-session-packages"],
-    enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
-  });
+  const { data: packages } = usePTSessionPackages(isAuthenticated && user?.role === 'admin');
+  const { data: allSessions } = usePTSessionAttendance(isAuthenticated && user?.role === 'admin');
+  const { confirm } = usePTSessionActions();
 
-  const { data: allSessions, isLoading: sessionsLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/pt-session-attendance"],
-    enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
-  });
-
-  const confirmSessionMutation = useMutation({
-    mutationFn: (sessionId: string) =>
-      apiRequest("PUT", `/api/admin/pt-session-attendance/${sessionId}/confirm`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/pt-session-attendance"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/pt-session-packages"] });
-      toast({
-        title: "Berhasil",
-        description: "Sesi PT berhasil dikonfirmasi",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal mengkonfirmasi sesi",
-        variant: "destructive",
-      });
-    }
-  });
-
-  if (isLoading || packagesLoading || sessionsLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Do not block rendering with spinners; show cached or empty data.
 
   if (!user || user.role !== 'admin') {
     return null;
@@ -99,12 +66,10 @@ export default function AdminPTSessions() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Manajemen Sesi PT</h1>
-          <p className="text-muted-foreground mt-2">
-            Kelola paket sesi dan konfirmasi kehadiran member
-          </p>
-        </div>
+        <PageHeader
+          title="Manajemen Sesi PT"
+          subtitle="Kelola paket sesi dan konfirmasi kehadiran member"
+        />
 
         {/* Search */}
         <div className="relative max-w-md">
@@ -280,8 +245,15 @@ export default function AdminPTSessions() {
                                 <Button
                                   size="sm"
                                   className="bg-green-500 hover:bg-green-600 text-white"
-                                  onClick={() => confirmSessionMutation.mutate(session.id)}
-                                  disabled={confirmSessionMutation.isPending}
+                                  onClick={() => confirm.mutate(session.id, {
+                                    onSuccess: () => {
+                                      toast({ title: "Berhasil", description: "Sesi PT berhasil dikonfirmasi" });
+                                    },
+                                    onError: (error: unknown) => {
+                                      toast({ title: "Error", description: getErrorMessage(error, "Gagal mengkonfirmasi sesi"), variant: "destructive" });
+                                    }
+                                  })}
+                                  disabled={confirm.isPending}
                                   data-testid={`button-confirm-${session.id}`}
                                 >
                                   <CheckCircle className="h-4 w-4 mr-2" />

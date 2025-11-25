@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/errors";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, User, Lock, Dumbbell, Sparkles, ArrowRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import idachiLogo from "@assets/image_1759411904981.png";
+import idachiLogoPng from "@assets/idachi1.png";
+import idachiLogoWebp from "@assets/idachi1.webp";
 import BrandWatermark from "@/components/brand-watermark";
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -32,29 +33,25 @@ export default function Login() {
     },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (data: LoginFormData) => {
-      return await apiRequest("POST", "/api/login", data);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({
-        title: "Login berhasil",
-        description: "Selamat datang kembali!",
-      });
-      setLocation("/");
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Login gagal",
-        description: error.message || "Username atau password salah",
-        variant: "destructive",
-      });
-    },
-  });
+  const { login } = useAuthActions();
+
+  const loginMutation = login;
 
   const onSubmit = (data: LoginFormData) => {
-    loginMutation.mutate(data);
+    loginMutation.mutate(data, {
+      onSuccess: async () => {
+        await new Promise((r) => setTimeout(r, 150));
+        toast({ title: "Login berhasil", description: "Selamat datang kembali!" });
+        setLocation("/");
+      },
+      onError: (error: unknown) => {
+        toast({
+          title: "Login gagal",
+          description: getErrorMessage(error, "Username atau password salah"),
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   return (
@@ -70,11 +67,15 @@ export default function Login() {
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <div className="absolute inset-0 bg-gradient-to-r from-primary to-neon-purple rounded-2xl blur-xl opacity-60 animate-pulse"></div>
-                  <img
-                    src={idachiLogo}
-                    alt="Idachi Fitness Logo"
-                    className="relative h-20 w-20 object-contain rounded-xl"
-                  />
+                  <picture>
+                    <source srcSet={idachiLogoWebp} type="image/webp" />
+                    <img
+                      src={idachiLogoPng}
+                      alt="Idachi Fitness Logo"
+                      className="relative h-20 w-20 object-contain rounded-xl"
+                      width="80" height="80"
+                    />
+                  </picture>
                 </div>
                 <h1 className="text-5xl font-bold bg-gradient-to-r from-primary to-neon-purple bg-clip-text text-transparent">
                   Idachi Fitness
@@ -125,12 +126,16 @@ export default function Login() {
               <Card className="rounded-3xl border border-border/70 shadow-2xl bg-card/90 backdrop-blur-xl">
                 <CardHeader className="space-y-2 pb-6">
                   <div className="lg:hidden flex justify-center mb-4">
-                    <img
-                      src={idachiLogo}
-                      alt="Idachi Fitness Logo"
-                      className="h-16 w-16 object-contain rounded-xl"
-                      data-testid="img-logo"
-                    />
+                    <picture>
+                      <source srcSet={idachiLogoWebp} type="image/webp" />
+                      <img
+                        src={idachiLogoPng}
+                        alt="Idachi Fitness Logo"
+                        className="h-16 w-16 object-contain rounded-xl"
+                        width="64" height="64"
+                        data-testid="img-logo"
+                      />
+                    </picture>
                   </div>
                   <CardTitle className="text-3xl font-bold text-center text-foreground">
                     Selamat Datang Kembali

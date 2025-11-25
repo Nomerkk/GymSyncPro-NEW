@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useLocation, useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Mail, CheckCircle } from "lucide-react";
-import idachiLogo from "@assets/image_1759411904981.png";
+import idachiLogoPng from "@assets/idachi1.png";
+import idachiLogoWebp from "@assets/idachi1.webp";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 type VerifyEmailFormData = z.infer<typeof verifyEmailSchema>;
 
@@ -38,29 +39,23 @@ export default function VerifyEmail() {
     }
   }, [emailFromUrl, form]);
 
-  const verifyMutation = useMutation({
-    mutationFn: async (data: VerifyEmailFormData) => {
-      return await apiRequest("POST", "/api/verify-email", data);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({
-        title: "Verifikasi Berhasil!",
-        description: "Email Anda telah diverifikasi. Selamat datang!",
-      });
-      setLocation("/");
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Verifikasi Gagal",
-        description: error.message || "Kode verifikasi tidak valid atau sudah kadaluarsa",
-        variant: "destructive",
-      });
-    },
-  });
+  const { verifyEmail, resendVerificationCode } = useAuthActions();
+  const verifyMutation = verifyEmail;
 
   const onSubmit = (data: VerifyEmailFormData) => {
-    verifyMutation.mutate(data);
+    verifyMutation.mutate({ email: data.email, code: data.verificationCode }, {
+      onSuccess: () => {
+        toast({ title: "Verifikasi Berhasil!", description: "Email Anda telah diverifikasi. Selamat datang!" });
+        setLocation("/");
+      },
+      onError: (error: unknown) => {
+        toast({
+          title: "Verifikasi Gagal",
+          description: getErrorMessage(error, "Kode verifikasi tidak valid atau sudah kadaluarsa"),
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   const handleResendCode = async () => {
@@ -76,21 +71,19 @@ export default function VerifyEmail() {
     }
 
     setIsResending(true);
-    try {
-      await apiRequest("POST", "/api/resend-verification-code", { email: currentEmail });
-      toast({
-        title: "Kode Terkirim!",
-        description: "Kode verifikasi baru telah dikirim ke email Anda",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Gagal Mengirim Kode",
-        description: error.message || "Terjadi kesalahan saat mengirim kode verifikasi",
-        variant: "destructive",
-      });
-    } finally {
-      setIsResending(false);
-    }
+    resendVerificationCode.mutate(currentEmail, {
+      onSuccess: () => {
+        toast({ title: "Kode Terkirim!", description: "Kode verifikasi baru telah dikirim ke email Anda" });
+      },
+      onError: (error: unknown) => {
+        toast({
+          title: "Gagal Mengirim Kode",
+          description: getErrorMessage(error, "Terjadi kesalahan saat mengirim kode verifikasi"),
+          variant: "destructive",
+        });
+      },
+      onSettled: () => setIsResending(false),
+    });
   };
 
   return (
@@ -109,12 +102,18 @@ export default function VerifyEmail() {
               <div className="flex justify-center mb-4">
                 <div className="relative">
                   <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-2xl blur-2xl opacity-60 animate-pulse"></div>
-                  <img 
-                    src={idachiLogo} 
-                    alt="Idachi Fitness Logo" 
-                    className="relative h-16 w-16 object-contain rounded-xl"
-                    data-testid="img-logo"
-                  />
+                    <picture>
+                      <source srcSet={idachiLogoWebp} type="image/webp" />
+                      <img 
+                        src={idachiLogoPng} 
+                        alt="Idachi Fitness Logo" 
+                        className="relative h-16 w-16 object-contain rounded-xl"
+                        data-testid="img-logo"
+                        loading="lazy" 
+                        decoding="async"
+                        width="64" height="64"
+                      />
+                    </picture>
                 </div>
               </div>
               <CardTitle className="text-3xl font-bold text-center text-gray-900 dark:text-white">

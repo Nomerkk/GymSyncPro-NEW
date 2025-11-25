@@ -1,27 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -29,12 +6,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const vite_1 = require("vite");
 const plugin_react_1 = __importDefault(require("@vitejs/plugin-react"));
 const path_1 = __importDefault(require("path"));
-
-// Note: removed Replit-specific plugins (they are ESM-only and use top-level await)
-// to make the config compatible with local builds (CJS environment).
+const vite_plugin_compression_1 = __importDefault(require("vite-plugin-compression"));
+const rollup_plugin_visualizer_1 = require("rollup-plugin-visualizer");
 exports.default = (0, vite_1.defineConfig)({
     plugins: [
         (0, plugin_react_1.default)(),
+        // Generate gzip & brotli assets for production
+        (0, vite_plugin_compression_1.default)({ algorithm: 'gzip', ext: '.gz' }),
+        (0, vite_plugin_compression_1.default)({ algorithm: 'brotliCompress', ext: '.br' }),
+        // Bundle analysis (open dist/stats.html after build)
+        (0, rollup_plugin_visualizer_1.visualizer)({ filename: "dist/stats.html", template: "treemap", gzipSize: true, brotliSize: true, open: false }),
+        // Removed Replit-specific plugins (ESM-only) to keep local dev build compatible
     ],
     resolve: {
         alias: {
@@ -47,6 +29,31 @@ exports.default = (0, vite_1.defineConfig)({
     build: {
         outDir: path_1.default.resolve(__dirname, "dist/public"),
         emptyOutDir: true,
+        rollupOptions: {
+            output: {
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('react'))
+                            return 'react';
+                        if (id.includes('@radix-ui') || id.includes('class-variance-authority') || id.includes('clsx'))
+                            return 'ui';
+                        if (id.includes('@tanstack'))
+                            return 'query';
+                        if (id.includes('date-fns'))
+                            return 'date';
+                        if (id.includes('recharts'))
+                            return 'charts';
+                        if (id.includes('html5-qrcode') || id.includes('qrcode'))
+                            return 'qr';
+                        if (id.includes('zod'))
+                            return 'zod';
+                        if (id.includes('lucide-react'))
+                            return 'icons';
+                        return 'vendor';
+                    }
+                }
+            }
+        }
     },
     server: {
         fs: {

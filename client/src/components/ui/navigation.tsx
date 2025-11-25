@@ -1,30 +1,35 @@
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Dumbbell, Bell, ShieldQuestion, LogOut, Calendar, Home } from "lucide-react";
+import { Bell, ShieldQuestion, LogOut, Calendar, Home } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import logoPath from "@assets/image_1759411904981.png";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
+
+interface UserLite {
+  firstName?: string;
+  lastName?: string;
+  profileImageUrl?: string;
+}
 
 interface NavigationProps {
-  user: any;
+  user: UserLite;
   isAdmin?: boolean;
   notificationCount?: number;
 }
 
 export default function Navigation({ user, isAdmin = false, notificationCount = 0 }: NavigationProps) {
   const [location] = useLocation();
+  const { logout } = useAuthActions();
 
   const handleLogout = async () => {
-    try {
-      await apiRequest("POST", "/api/logout");
-      queryClient.clear();
-      window.location.href = "/login";
-    } catch (error) {
-      console.error("Logout error:", error);
-      queryClient.clear();
-      window.location.href = "/login";
-    }
+    logout.mutate(undefined, {
+      onSettled: () => {
+        queryClient.clear();
+        window.location.href = isAdmin ? "/login-admin" : "/login";
+      }
+    });
   };
 
   return (

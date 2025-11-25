@@ -2,7 +2,8 @@ import { useState } from "react";
 import AdminSidebar from "./admin-sidebar";
 import { Button } from "@/components/ui/button";
 import { Menu, Bell, LogOut, User } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -13,8 +14,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+interface AdminUserLite {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImageUrl?: string | null;
+}
+
 interface AdminLayoutProps {
-  user?: any;
+  user?: AdminUserLite;
   notificationCount?: number;
   children: React.ReactNode;
 }
@@ -22,17 +30,15 @@ interface AdminLayoutProps {
 export default function AdminLayout({ user, notificationCount = 0, children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { logout } = useAuthActions();
 
   const handleLogout = async () => {
-    try {
-      await apiRequest("POST", "/api/logout");
-      queryClient.clear();
-      window.location.href = "/login-admin";
-    } catch (error) {
-      console.error("Logout error:", error);
-      queryClient.clear();
-      window.location.href = "/login-admin";
-    }
+    logout.mutate(undefined, {
+      onSettled: () => {
+        queryClient.clear();
+        window.location.href = "/login-admin";
+      }
+    });
   };
 
   const getUserInitials = () => {
@@ -102,7 +108,7 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
                 >
                   <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8 border-2 border-primary/20">
-                      <AvatarImage src={user?.profileImageUrl} alt={user?.firstName} />
+                      <AvatarImage src={user?.profileImageUrl ?? undefined} alt={user?.firstName} />
                       <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
                         {getUserInitials()}
                       </AvatarFallback>

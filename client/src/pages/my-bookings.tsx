@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,12 +7,17 @@ import { Button } from "@/components/ui/button";
 import BottomNavigation from "@/components/ui/bottom-navigation";
 import BrandTopbar from "@/components/brand-topbar";
 import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useMemberClassBookingActions } from "@/hooks/useClassBookings";
+import { useMemberPTBookingActions } from "@/hooks/usePTBookings";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar, Clock, User, Dumbbell, X } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { getErrorMessage } from "@/types/adminDialogs";
+import type { Notification } from "@shared/schema.ts";
+import type { GymClassPublic } from "@/services/classes";
+import type { TrainerPublic } from "@/services/trainers";
 
 interface ClassBookingWithClass {
   id: string;
@@ -54,6 +59,11 @@ interface PtBookingWithTrainer {
   };
 }
 
+// Minimal exploration types to replace `any`
+// Consolidated service-layer types
+type GymClassLite = GymClassPublic;
+type TrainerLite = TrainerPublic;
+
 function getStatusBadge(status: string) {
   const map: Record<string, { label: string; className: string }> = {
     booked: { label: "Booked", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
@@ -70,8 +80,8 @@ export default function MyBookings() {
   const { toast } = useToast();
   const [openClassDetail, setOpenClassDetail] = useState(false);
   const [openPTDetail, setOpenPTDetail] = useState(false);
-  const [selectedClass, setSelectedClass] = useState<any | null>(null);
-  const [selectedTrainer, setSelectedTrainer] = useState<any | null>(null);
+  const [selectedClass, setSelectedClass] = useState<GymClassLite | null>(null);
+  const [selectedTrainer, setSelectedTrainer] = useState<TrainerLite | null>(null);
   const [ptSessionsByTrainer, setPtSessionsByTrainer] = useState<Record<string, number>>({});
   const [ptDatetimeByTrainer, setPtDatetimeByTrainer] = useState<Record<string, string>>({});
   const [ptNotesByTrainer, setPtNotesByTrainer] = useState<Record<string, string>>({});
@@ -88,77 +98,23 @@ export default function MyBookings() {
   });
 
   // Explore data
-  const { data: classes } = useQuery<any[]>({
+  const { data: classes } = useQuery<GymClassLite[]>({
     queryKey: ["/api/classes"],
     enabled: isAuthenticated,
   });
-  const { data: trainers } = useQuery<any[]>({
+  const { data: trainers } = useQuery<TrainerLite[]>({
     queryKey: ["/api/trainers"],
     enabled: isAuthenticated,
   });
-  const { data: notifications } = useQuery<any[]>({
+  const { data: notifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     enabled: isAuthenticated,
   });
   const notificationCount = notifications?.filter(n => !n.isRead).length || 0;
 
   // Cancel mutations
-  const cancelClassMutation = useMutation({
-    mutationFn: async (bookingId: string) => {
-      await apiRequest("PUT", `/api/class-bookings/${bookingId}/cancel`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/class-bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
-      toast({ title: "Success", description: "Class booking cancelled" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to cancel booking", variant: "destructive" });
-    },
-  });
-
-  const cancelPTMutation = useMutation({
-    mutationFn: async (bookingId: string) => {
-      await apiRequest("PUT", `/api/pt-bookings/${bookingId}/cancel`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-bookings"] });
-      toast({ title: "Success", description: "PT session cancelled" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to cancel PT session", variant: "destructive" });
-    },
-  });
-
-  // Booking mutations
-  const bookClassMutation = useMutation({
-    mutationFn: async (vars: { classId: string; bookingDate: string }) => {
-      await apiRequest("POST", `/api/classes/${vars.classId}/book`, { bookingDate: vars.bookingDate });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/class-bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
-      setOpenClassDetail(false);
-      toast({ title: "Booked!", description: "Your class has been booked" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to book class", variant: "destructive" });
-    },
-  });
-
-  const bookPTMutation = useMutation({
-    mutationFn: async (vars: { trainerId: string; bookingDate: string; sessionCount: number; notes?: string }) => {
-      await apiRequest("POST", "/api/pt-bookings", vars);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-bookings"] });
-      setOpenPTDetail(false);
-      toast({ title: "Requested!", description: "Your PT session request was sent" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to request PT session", variant: "destructive" });
-    },
-  });
+  const { cancel: cancelClassMutation, book: bookClassMutation } = useMemberClassBookingActions();
+  const { cancel: cancelPTMutation, create: bookPTMutation } = useMemberPTBookingActions();
 
   const handleCancelClass = (bookingId: string) => {
     if (confirm("Cancel this class booking?")) {
@@ -211,7 +167,7 @@ export default function MyBookings() {
           ) : (
             <div className="-mx-4 px-4 overflow-x-auto no-scrollbar">
               <div className="flex gap-3">
-                {trainers.map((t: any) => {
+                {trainers.map((t) => {
                   const price = parseFloat(t.pricePerSession || '0');
                   return (
                     <div key={t.id} className="w-[68%] max-w-[260px] shrink-0">
@@ -230,7 +186,7 @@ export default function MyBookings() {
                         >
                           <AspectRatio ratio={3/4}>
                             {t.imageUrl ? (
-                              <img src={t.imageUrl} alt={t.name} className="h-full w-full object-cover" />
+                              <img src={t.imageUrl} alt={t.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                             ) : (
                               <div className="h-full w-full bg-muted flex items-center justify-center text-muted-foreground">PT</div>
                             )}
@@ -267,14 +223,14 @@ export default function MyBookings() {
             <Card className="p-6 text-sm text-muted-foreground">Belum ada class tersedia.</Card>
           ) : (
             <div className="grid grid-cols-1 gap-3">
-              {classes.map((c: any) => {
+              {classes.map((c) => {
                 const remaining = Math.max(0, (c.maxCapacity || 0) - (c.currentEnrollment || 0));
                 return (
                   <button key={c.id} className="text-left" onClick={() => { if (user?.active === false) { toast({ title: "Akun sedang Cuti", description: "Booking class dinonaktifkan sementara.", variant: "destructive" }); return; } setSelectedClass(c); setOpenClassDetail(true); }} disabled={user?.active === false}>
                     <Card className="overflow-hidden border-border">
                       {c.imageUrl && (
                         <AspectRatio ratio={3/4}>
-                          <img src={c.imageUrl} alt={c.name} className="h-full w-full object-cover" />
+                          <img src={c.imageUrl} alt={c.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                         </AspectRatio>
                       )}
                       <div className="p-3">
@@ -484,6 +440,9 @@ export default function MyBookings() {
                             bookingDate: new Date(chosen).toISOString(),
                             sessionCount: sessions,
                             notes: notes || undefined,
+                          }, {
+                            onSuccess: () => { setOpenPTDetail(false); toast({ title: "Requested!", description: "Your PT session request was sent" }); },
+                            onError: (error: unknown) => toast({ title: "Error", description: getErrorMessage(error, "Failed to request PT session"), variant: "destructive" })
                           });
                         }}
                       >
@@ -505,7 +464,7 @@ export default function MyBookings() {
             <div className="space-y-4">
               {selectedClass.imageUrl && (
                 <AspectRatio ratio={3/4}>
-                  <img src={selectedClass.imageUrl} alt={selectedClass.name} className="h-full w-full rounded-md object-cover border border-border" />
+                  <img src={selectedClass.imageUrl} alt={selectedClass.name} className="h-full w-full rounded-md object-cover border border-border" loading="lazy" decoding="async" />
                 </AspectRatio>
               )}
               <div>
@@ -517,7 +476,7 @@ export default function MyBookings() {
                 </div>
               </div>
               {(() => {
-                const full = selectedClass.currentEnrollment >= selectedClass.maxCapacity;
+                const full = (selectedClass.currentEnrollment ?? 0) >= selectedClass.maxCapacity;
                 const defaultDate = new Date().toISOString().slice(0, 10);
                 return (
                   <div className="space-y-3">
@@ -556,7 +515,10 @@ export default function MyBookings() {
                             toast({ title: "Akun sedang Cuti", description: "Booking class dinonaktifkan sementara.", variant: "destructive" });
                             return;
                           }
-                          bookClassMutation.mutate({ classId: selectedClass.id, bookingDate: new Date(chosen).toISOString() });
+                          bookClassMutation.mutate({ classId: selectedClass.id, bookingDate: new Date(chosen).toISOString() }, {
+                            onSuccess: () => { setOpenClassDetail(false); toast({ title: "Booked!", description: "Your class has been booked" }); },
+                            onError: (error: unknown) => toast({ title: "Error", description: getErrorMessage(error, "Failed to book class"), variant: "destructive" })
+                          });
                         }}
                       >
                         {user?.active === false ? "Sedang Cuti" : (full ? "Full" : "Book")}

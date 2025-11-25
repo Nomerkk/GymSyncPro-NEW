@@ -1,33 +1,46 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMemberCheckin } from "@/hooks/useCheckins";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import QRModal from "@/components/qr-modal";
-import FeedbackModal from "@/components/feedback-modal";
+// Lazy load heavy modals to shorten initial JS and LCP
+const QRModal = lazy(() => import("@/components/qr-modal"));
+const FeedbackModal = lazy(() => import("@/components/feedback-modal"));
 import BottomNavigation from "@/components/ui/bottom-navigation";
 import BrandTopbar from "@/components/brand-topbar";
 import BrandWatermark from "@/components/brand-watermark";
 import { Users, Crown } from "lucide-react";
+// Defer date formatting library to reduce main bundle. It will be treeshaken but still heavy;
+// keeping import here is fine, but the overall code split improves initial payload via other lazies.
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
- 
+import { getErrorMessage } from "@/lib/errors";
+import type { Promotion } from "@/services/promotions";
+import { memberDashboardService } from "@/services/memberDashboard";
+import type { MemberBootstrapPayload as BootstrapPayload, MemberCheckIn as CheckIn } from "@/services/memberDashboard";
+import { checkinsService, type MemberQRData as QRPayload } from "@/services/checkins";
+
+interface RecentCheckInSummary { id: string; dateText: string; timeText: string; status: string }
+
+// getErrorMessage centralized in @/lib/errors
 
 export default function MemberDashboard() {
   const { toast } = useToast();
   const { user, isLoading, isAuthenticated } = useAuth();
   const [showQRModal, setShowQRModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [qrPayload, setQrPayload] = useState<any>(null);
+  const [qrPayload, setQrPayload] = useState<QRPayload | null>(null);
+  // Prefetched QR (background) to reduce perceived latency when user taps check-in
+  const [prefetchedQR, setPrefetchedQR] = useState<QRPayload | null>(null);
+  const prefetchingRef = useRef(false);
 
   // Debug: render counter to help track unexpected hook-order / HMR issues
   const renderCountRef = useRef(0);
   renderCountRef.current += 1;
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.debug("[MemberDashboard] render", renderCountRef.current, {
       isAuthenticated,
       isLoading,
@@ -46,14 +59,16 @@ export default function MemberDashboard() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: dashboardData, isLoading: dashboardLoading } = useQuery<any>({
-    queryKey: ["/api/member/dashboard"],
+  const { data: bootstrap, isLoading: bootstrapLoading, isError: bootstrapError, error: bootstrapErr, refetch: refetchBootstrap } = useQuery<BootstrapPayload>({
+    queryKey: ["/api/member/bootstrap"],
     enabled: isAuthenticated,
     retry: false,
+    queryFn: () => memberDashboardService.getBootstrap(),
   });
 
   // Manual QR generation (avoid useMutation to keep hook ordering stable)
   const [isGeneratingQR, setIsGeneratingQR] = useState(false);
+  const { generate: generateCheckin } = useMemberCheckin();
   const generateQR = useCallback(async () => {
     if (user && user.active === false) {
       toast({
@@ -64,32 +79,83 @@ export default function MemberDashboard() {
       return;
     }
     if (isGeneratingQR) return;
+    // If we have a prefetched QR still valid, use it immediately
+    if (prefetchedQR?.expiresAt) {
+      const expires = new Date(prefetchedQR.expiresAt).getTime();
+      if (Date.now() < expires) {
+        setQrPayload(prefetchedQR);
+        setShowQRModal(true);
+        return;
+      }
+    }
     setIsGeneratingQR(true);
     try {
-      const response = await apiRequest("POST", "/api/checkin/generate");
-      const body = await response.json();
-      // show modal only after successful response
-      setQrPayload(body);
+      const result = await new Promise<QRPayload>((resolve, reject) => {
+        generateCheckin.mutate(undefined, {
+          onSuccess: (data) => resolve(data as QRPayload),
+          onError: (err) => reject(err),
+        });
+      });
+      setQrPayload(result);
       setShowQRModal(true);
       // Optionally you could store the qr payload in state if needed
       // setQrPayload(body);
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.message || "Failed to generate QR code",
-        variant: "destructive",
-      });
+    } catch (err) {
+      toast({ title: "Error", description: getErrorMessage(err, "Failed to generate QR code"), variant: "destructive" });
     } finally {
       setIsGeneratingQR(false);
     }
-  }, [isGeneratingQR, toast]);
+  }, [isGeneratingQR, toast, prefetchedQR, user, generateCheckin]);
 
-  const isBusy = isLoading || dashboardLoading;
+  const isBusy = isLoading || bootstrapLoading;
   const noUser = !user;
 
-  const membership = dashboardData?.membership;
-  const checkIns = dashboardData?.checkIns || [];
-  const stats = dashboardData?.stats || {};
+  const membership = bootstrap?.dashboard?.membership;
+  const checkIns = bootstrap?.dashboard?.checkIns || [];
+  const stats = bootstrap?.dashboard?.stats || {};
+
+  // Memoize derived recent check-ins (top-level to respect Rules of Hooks)
+  const recentCheckIns = useMemo(() =>
+    (checkIns || []).slice(0, 5).map((c: CheckIn) => ({
+      id: c.id,
+      dateText: new Date(c.checkInTime).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+      timeText: new Date(c.checkInTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      status: c.status,
+    })),
+    [checkIns]
+  ) as RecentCheckInSummary[];
+
+  // IntersectionObserver-driven lazy mount for non-critical sections
+  const [showPromos, setShowPromos] = useState(false);
+  const [showHistory, setShowHistory] = useState(false); // check-in history panel
+  const [showStatsGrid, setShowStatsGrid] = useState(false); // auxiliary stats grid if added later
+  const promosAnchorRef = useRef<HTMLDivElement | null>(null);
+  const historyAnchorRef = useRef<HTMLDivElement | null>(null);
+  const statsGridAnchorRef = useRef<HTMLDivElement | null>(null);
+  // Generic observer attach helper
+  useEffect(() => {
+    const attach = (ref: React.RefObject<HTMLElement>, setter: (v: boolean) => void, margin = '160px') => {
+      if (!ref.current) return;
+      const obs = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            setter(true);
+            obs.disconnect();
+          }
+        });
+      }, { rootMargin: margin });
+      obs.observe(ref.current);
+      return obs;
+    };
+    const o1 = attach(promosAnchorRef, setShowPromos, '140px');
+    const o2 = attach(historyAnchorRef, setShowHistory, '120px');
+    const o3 = attach(statsGridAnchorRef, setShowStatsGrid, '120px');
+    return () => {
+      if (o1) o1.disconnect();
+      if (o2) o2.disconnect();
+      if (o3) o3.disconnect();
+    };
+  }, []);
 
   const getDaysUntilExpiry = () => {
     if (!membership?.endDate) return 0;
@@ -101,10 +167,53 @@ export default function MemberDashboard() {
 
   const daysLeft = getDaysUntilExpiry();
 
+  // Background prefetch of QR code using requestIdleCallback + AbortController
+  useEffect(() => {
+    if (!isAuthenticated || user?.active === false) return;
+    if (isBusy) return; // wait until dashboard settled
+    if (prefetchingRef.current) return;
+
+    const controller = new AbortController();
+    type IdleDeadline = { didTimeout: boolean; timeRemaining: () => number };
+    type IdleWin = Window & { requestIdleCallback?: (cb: (d: IdleDeadline) => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    const schedule = (cb: () => void) => {
+      const w = window as IdleWin;
+      if (typeof w.requestIdleCallback === 'function') {
+        const id = w.requestIdleCallback(() => cb(), { timeout: 5000 });
+        return () => typeof w.cancelIdleCallback === 'function' && w.cancelIdleCallback(id);
+      } else {
+        const t = setTimeout(cb, 4000);
+        return () => clearTimeout(t);
+      }
+    };
+
+    const cancel = schedule(async () => {
+      if (prefetchedQR?.expiresAt) {
+        const expires = new Date(prefetchedQR.expiresAt).getTime();
+        if (Date.now() < expires - 60_000) {
+          return;
+        }
+      }
+      prefetchingRef.current = true;
+      try {
+        const data = await checkinsService.generateMember({ signal: controller.signal });
+        setPrefetchedQR(data);
+      } catch {
+        // ignore
+      } finally {
+        prefetchingRef.current = false;
+      }
+    });
+
+    return () => {
+      controller.abort();
+      if (cancel) cancel();
+    };
+  }, [isAuthenticated, user?.active, isBusy, prefetchedQR]);
+
   // Mobile Promotions mini-carousel (lightweight, client-side)
-  // Try to load live promotions for mobile snippet
-  const { data: livePromos } = useQuery<any>({ queryKey: ["/api/member/promotions"], enabled: isAuthenticated });
-  const mobilePromos = Array.isArray(livePromos) ? livePromos : [];
+  // Now sourced from bootstrap payload; still render-gated by viewport to defer work.
+  const mobilePromos: Promotion[] = Array.isArray(bootstrap?.promotions) ? (bootstrap!.promotions as Promotion[]) : [];
   const [promoIndex, setPromoIndex] = useState(0);
   const promoTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
@@ -203,7 +312,7 @@ export default function MemberDashboard() {
                   ) : (
                     <>
                       <p className="text-xs opacity-90">{daysLeft} days left</p>
-                      <p className="text-xs font-semibold">Exp: {format(new Date(membership.endDate), "MMM dd")}</p>
+                      <p className="text-xs font-semibold">Exp: {membership.endDate ? format(new Date(membership.endDate), "MMM dd") : 'N/A'}</p>
                     </>
                   )}
                 </div>
@@ -246,7 +355,7 @@ export default function MemberDashboard() {
         {/* Gym Crowd Status (always visible with safe fallback) */}
         {(() => {
           const hasCrowd = typeof stats.currentCrowd === 'number';
-          const value = hasCrowd ? stats.currentCrowd : 0;
+          const value: number = hasCrowd ? (stats.currentCrowd as number) : 0;
           return (
             <Card className="p-6 border-border/50 bg-gradient-to-br from-card to-muted/20 backdrop-blur-sm">
               <div className="flex items-center justify-between mb-4">
@@ -282,68 +391,150 @@ export default function MemberDashboard() {
           );
         })()}
   {/* Promotions (fills empty space) - visible on all screens */}
-        <section className="mt-4" role="region" aria-label="Promotions">
+  <section ref={promosAnchorRef} className="mt-4" role="region" aria-label="Promotions" style={{ contentVisibility: 'auto', containIntrinsicSize: '300px' }}>
           <div className="flex items-center justify-between mb-2 px-0.5">
             <h2 className="text-sm font-semibold text-foreground">Promotions & Offers</h2>
             <a href="/promotions" className="text-xs font-semibold" style={{ color: "#38F593" }}>See all</a>
           </div>
-          {mobilePromos.length === 0 ? (
+          {!showPromos ? (
+            <div className="space-y-2" aria-busy="true" aria-live="polite">
+              {/* shimmer skeleton */}
+              <div className="h-[220px] rounded-2xl bg-muted animate-pulse" />
+            </div>
+          ) : bootstrapLoading ? (
+            <div className="space-y-2" aria-busy="true" aria-live="polite">
+              <div className="h-[220px] rounded-2xl bg-muted animate-pulse" />
+            </div>
+          ) : bootstrapError ? (
+            <div className="flex items-center justify-between p-3 rounded-xl border bg-card/70">
+              <p className="text-xs text-muted-foreground">Tidak bisa memuat promos: {getErrorMessage(bootstrapErr, 'Unknown error')}</p>
+              <Button size="sm" variant="outline" onClick={() => refetchBootstrap()}>Coba lagi</Button>
+            </div>
+          ) : mobilePromos.length === 0 ? (
             <div className="text-xs text-muted-foreground py-3">Belum ada promo aktif</div>
           ) : (
-          <div
-            className="relative w-full overflow-visible"
-            onTouchStart={onPromoTouchStart}
-            onTouchMove={onPromoTouchMove}
-            onTouchEnd={onPromoTouchEnd}
-          >
             <div
-              className="flex transition-transform duration-500 ease-in-out"
-              style={{ transform: `translateX(-${promoIndex * 100}%)` }}
+              className="relative w-full overflow-visible"
+              onTouchStart={onPromoTouchStart}
+              onTouchMove={onPromoTouchMove}
+              onTouchEnd={onPromoTouchEnd}
             >
-              {mobilePromos.map((p) => (
-                <div key={p.id} className="shrink-0 grow-0 basis-full">
-                  <a
-                    href={(p as any).href || (p as any).ctaHref || "#"}
-                    className="block mx-auto w-[88%] md:w-[72%] h-[58vw] min-h-[200px] max-h-[320px] relative select-none"
-                    draggable={false}
-                  >
-                    <div className="absolute inset-0 rounded-2xl bg-white shadow-[0_6px_24px_rgba(0,0,0,0.15)] p-2">
-                      <div className="relative w-full h-full rounded-xl overflow-hidden">
-                        <img src={p.imageUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+              <div
+                className="flex transition-transform duration-500 ease-in-out"
+                style={{ transform: `translateX(-${promoIndex * 100}%)` }}
+              >
+                {mobilePromos.map((p) => (
+                  <div key={p.id} className="shrink-0 grow-0 basis-full">
+                    <a
+                      href={p.ctaHref || "#"}
+                      className="block mx-auto w-[88%] md:w-[72%] h-[58vw] min-h-[200px] max-h-[320px] relative select-none"
+                      draggable={false}
+                    >
+                      <div className="absolute inset-0 rounded-2xl bg-white shadow-[0_6px_24px_rgba(0,0,0,0.15)] p-2">
+                        <div className="relative w-full h-full rounded-xl overflow-hidden">
+                          <img
+                            src={p.imageUrl ?? undefined}
+                            alt={p.title}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                            fetchPriority="low"
+                            width="1200"
+                            height="675"
+                            sizes="(min-width: 768px) 72vw, 88vw"
+                          />
+                        </div>
                       </div>
+                    </a>
+                  </div>
+                ))}
+              </div>
+              <div className="absolute -bottom-3 left-0 right-0 flex items-center justify-center gap-2">
+                {mobilePromos.map((_, i) => (
+                  <button
+                    key={i}
+                    aria-label={`Slide ${i + 1}`}
+                    onClick={() => goPromo(i)}
+                    className="w-2.5 h-2.5 rounded-full transition-all"
+                    style={{ backgroundColor: i === promoIndex ? "#38F593" : "rgba(255,255,255,0.45)", boxShadow: i === promoIndex ? "0 0 10px #38F593" : undefined }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Deferred Check-in History (shows after initial content) */}
+        <section ref={historyAnchorRef} className="mt-8" role="region" aria-label="Recent Check-ins" style={{ contentVisibility: 'auto', containIntrinsicSize: '160px' }}>
+          <div className="flex items-center justify-between mb-2 px-0.5">
+            <h2 className="text-sm font-semibold text-foreground">Recent Check-ins</h2>
+            <a href="/my-bookings" className="text-xs font-semibold" style={{ color: '#38F593' }}>Details</a>
+          </div>
+          {/* Skeleton until section enters view OR dashboard still loading */}
+          {!showHistory || bootstrapLoading ? (
+            <div className="space-y-2" aria-busy="true" aria-live="polite">
+              {/* skeleton rows */}
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-12 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : checkIns.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-3">Belum ada riwayat check-in</p>
+          ) : (
+            <div className="space-y-2">
+              {recentCheckIns.map((c) => (
+                <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border bg-card/70 backdrop-blur-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <span className="text-[10px] font-bold text-primary">IN</span>
                     </div>
-                  </a>
+                    <div>
+                      <p className="text-xs font-medium">{c.dateText}</p>
+                      <p className="text-[10px] text-muted-foreground">{c.timeText}</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2 py-1 rounded-full bg-primary/10 text-primary font-semibold">{c.status === 'completed' ? 'Done' : 'Active'}</span>
                 </div>
               ))}
             </div>
-            <div className="absolute -bottom-3 left-0 right-0 flex items-center justify-center gap-2">
-              {mobilePromos.map((_, i) => (
-                <button
-                  key={i}
-                  aria-label={`Slide ${i + 1}`}
-                  onClick={() => goPromo(i)}
-                  className="w-2.5 h-2.5 rounded-full transition-all"
-                  style={{ backgroundColor: i === promoIndex ? "#38F593" : "rgba(255,255,255,0.45)", boxShadow: i === promoIndex ? "0 0 10px #38F593" : undefined }}
-                />
-              ))}
+          )}
+        </section>
+
+        {/* Placeholder for future deferred stats grid */}
+        <section ref={statsGridAnchorRef} className="mt-8" role="region" aria-label="Extra Stats">
+          {!showStatsGrid ? (
+            <div className="h-20 rounded-xl bg-muted animate-pulse" />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-4 rounded-xl border bg-card/70 backdrop-blur-sm">
+                <p className="text-[10px] text-muted-foreground">Monthly Check-ins</p>
+                <p className="text-lg font-bold">{stats.monthlyCheckIns || 0}</p>
+              </div>
+              <div className="p-4 rounded-xl border bg-card/70 backdrop-blur-sm">
+                <p className="text-[10px] text-muted-foreground">Upcoming Classes</p>
+                <p className="text-lg font-bold">{stats.upcomingClasses || 0}</p>
+              </div>
             </div>
-          </div>
           )}
         </section>
         </>
         )}
       </main>
 
-      {/* Modals */}
-      <QRModal
-        isOpen={showQRModal}
-        onClose={() => setShowQRModal(false)}
-        qrData={qrPayload}
-      />
-      <FeedbackModal
-        open={showFeedbackModal}
-        onOpenChange={setShowFeedbackModal}
-      />
+      {/* Modals (lazy, with lightweight fallbacks) */}
+      <Suspense fallback={null}>
+        <QRModal
+          isOpen={showQRModal}
+          onClose={() => setShowQRModal(false)}
+          qrData={qrPayload}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <FeedbackModal
+          open={showFeedbackModal}
+          onOpenChange={setShowFeedbackModal}
+        />
+      </Suspense>
 
       {/* Bottom Navigation */}
       <BottomNavigation
@@ -351,6 +542,13 @@ export default function MemberDashboard() {
         onCheckIn={generateQR}
         checkInDisabled={isGeneratingQR || (user ? user.active === false : true)}
       />
+
+      {/* Subtle dashboard error ribbon (non-blocking) */}
+      {bootstrapError && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-3 py-2 rounded-md bg-destructive text-destructive-foreground text-xs border">
+          Gagal memuat dashboard: {getErrorMessage(bootstrapErr, 'Unknown error')}
+        </div>
+      )}
     </div>
   );
 }

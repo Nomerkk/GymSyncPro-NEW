@@ -1,16 +1,16 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 import { forgotPasswordRequestSchema, type ForgotPasswordRequest } from "@shared/schema.ts";
 import { Dumbbell, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 export default function ForgotPasswordPage() {
   const [, setLocation] = useLocation();
@@ -23,30 +23,26 @@ export default function ForgotPasswordPage() {
     },
   });
 
-  const forgotPasswordMutation = useMutation({
-    mutationFn: async (data: ForgotPasswordRequest) => {
-      const res = await apiRequest("POST", "/api/forgot-password", data);
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      toast({
-        title: "Email Terkirim",
-        description: data.message || "Kode verifikasi telah dikirim ke email Anda",
-      });
-      // Redirect to reset password page
-      setLocation("/reset-password");
-    },
-    onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Gagal mengirim kode verifikasi",
-      });
-    },
-  });
+  const { forgotPassword } = useAuthActions();
+  const forgotPasswordMutation = forgotPassword;
 
   const onSubmit = (data: ForgotPasswordRequest) => {
-    forgotPasswordMutation.mutate(data);
+    forgotPasswordMutation.mutate(data.email, {
+      onSuccess: () => {
+        toast({
+          title: "Email Terkirim",
+          description: "Kode verifikasi telah dikirim ke email Anda",
+        });
+        setLocation("/reset-password");
+      },
+      onError: (error: unknown) => {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: getErrorMessage(error, "Gagal mengirim kode verifikasi"),
+        });
+      },
+    });
   };
 
   return (

@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, User, Mail, Phone, Lock, ShieldCheck, ArrowRight, Key } from "lucide-react";
 import { z } from "zod";
 import { Progress } from "@/components/ui/progress";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 const registerAdminSchema = z.object({
   adminSecretKey: z.string().min(1, "Admin secret key diperlukan"),
@@ -67,29 +67,23 @@ export default function RegisterAdmin() {
     return { strength, label: "Kuat", color: "bg-green-500" };
   }, [password]);
 
-  const registerMutation = useMutation({
-    mutationFn: async (data: RegisterFormData) => {
-      return await apiRequest("POST", "/api/register-admin", data);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({
-        title: "Registrasi Admin Berhasil",
-        description: "Selamat datang di admin panel!",
-      });
-      setLocation("/");
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Registrasi Gagal",
-        description: error.message || "Terjadi kesalahan saat registrasi",
-        variant: "destructive",
-      });
-    },
-  });
+  const { registerAdmin } = useAuthActions();
+  const registerMutation = registerAdmin;
 
   const onSubmit = (data: RegisterFormData) => {
-    registerMutation.mutate(data);
+    registerMutation.mutate(data, {
+      onSuccess: () => {
+        toast({ title: "Registrasi Admin Berhasil", description: "Selamat datang di admin panel!" });
+        setLocation("/");
+      },
+      onError: (error: unknown) => {
+        toast({
+          title: "Registrasi Gagal",
+          description: getErrorMessage(error, "Terjadi kesalahan saat registrasi"),
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   return (

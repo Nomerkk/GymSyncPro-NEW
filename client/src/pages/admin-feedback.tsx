@@ -36,31 +36,24 @@ export default function AdminFeedback() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/login";
       }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: dashboardData } = useQuery<any>({
+  interface AdminDashboardStats { expiringSoon?: number }
+  const { data: dashboardData } = useQuery<{ stats?: AdminDashboardStats }>({
     queryKey: ["/api/admin/dashboard"],
     enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
   });
 
   const { data: feedbacks } = useQuery<FeedbackRecord[]>({
     queryKey: ["/api/admin/feedbacks"],
     enabled: isAuthenticated && user?.role === 'admin',
-    retry: false,
   });
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Do not block rendering with a loading spinner; render with cached data or empty list.
 
   if (!user || user.role !== 'admin') {
     return null;

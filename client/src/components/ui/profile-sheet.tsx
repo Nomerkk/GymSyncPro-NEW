@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { useAuthActions } from "@/hooks/useAuthActions";
+import { getErrorMessage } from "@/types/adminDialogs";
 import PushNotificationToggle from "@/components/push-notification-toggle";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -39,17 +40,17 @@ export default function ProfileSheet({ children, open, onOpenChange }: ProfileSh
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  const logoutMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/logout"),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({ title: "Logout berhasil" });
-      navigate("/login");
-    },
-    onError: (err: any) => {
-      toast({ title: "Logout gagal", description: err?.message || "Silakan coba lagi", variant: "destructive" });
-    }
-  });
+  const { logout: logoutMutation } = useAuthActions();
+  const doLogout = () => {
+    logoutMutation.mutate(undefined, {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+        toast({ title: "Logout berhasil" });
+        navigate("/login");
+      },
+      onError: (err: unknown) => toast({ title: "Logout gagal", description: getErrorMessage(err, "Silakan coba lagi"), variant: "destructive" })
+    });
+  };
 
   const handleMenuClick = (action: string) => {
     onOpenChange?.(false);
@@ -209,7 +210,7 @@ export default function ProfileSheet({ children, open, onOpenChange }: ProfileSh
               <AlertDialogCancel>Batal</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => logoutMutation.mutate()}
+                onClick={doLogout}
               >
                 Ya, Logout
               </AlertDialogAction>

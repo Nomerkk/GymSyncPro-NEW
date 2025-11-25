@@ -2,16 +2,17 @@ import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { uploadsService } from "@/services/uploads";
+import { useTrainerActions } from "@/hooks/useTrainers";
 import { Loader2 } from "lucide-react";
 import type { PersonalTrainer } from "@shared/schema.ts";
+import { getErrorMessage } from "@/types/adminDialogs";
 
 const trainerSchema = z.object({
   name: z.string().min(1, "Nama diperlukan"),
@@ -23,7 +24,7 @@ const trainerSchema = z.object({
   pricePerSession: z.string().min(1, "Harga per sesi diperlukan"),
 });
 
-type TrainerFormData = z.infer<typeof trainerSchema>;
+type TrainerFormData = z.infer<typeof trainerSchema>; // Type definition remains unchanged
 
 interface AdminPTDialogProps {
   open: boolean;
@@ -34,6 +35,7 @@ interface AdminPTDialogProps {
 export default function AdminPTDialog({ open, onOpenChange, trainer }: AdminPTDialogProps) {
   const { toast } = useToast();
   const isEditing = !!trainer;
+    const { create, update } = useTrainerActions();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | undefined>(undefined);
@@ -75,66 +77,32 @@ export default function AdminPTDialog({ open, onOpenChange, trainer }: AdminPTDi
     }
   }, [trainer, form]);
 
-  const createMutation = useMutation({
-    mutationFn: async (data: TrainerFormData) => {
-      const payload = {
-        ...data,
-        experience: data.experience ? parseInt(data.experience) : undefined,
-        pricePerSession: parseFloat(data.pricePerSession),
-      };
-      return await apiRequest("POST", "/api/admin/trainers", payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/trainers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trainers"] });
-      toast({
-        title: "Berhasil!",
-        description: "Personal trainer berhasil ditambahkan",
-      });
-      onOpenChange(false);
-      form.reset();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal menambahkan personal trainer",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: TrainerFormData) => {
-      const payload = {
-        ...data,
-        experience: data.experience ? parseInt(data.experience) : undefined,
-        pricePerSession: parseFloat(data.pricePerSession),
-      };
-      return await apiRequest("PUT", `/api/admin/trainers/${trainer?.id}`, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/trainers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trainers"] });
-      toast({
-        title: "Berhasil!",
-        description: "Personal trainer berhasil diupdate",
-      });
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal mengupdate personal trainer",
-        variant: "destructive",
-      });
-    },
-  });
+  // Mutations moved to hook, with shared invalidation
 
   const onSubmit = (data: TrainerFormData) => {
-    if (isEditing) {
-      updateMutation.mutate(data);
+    const payload = {
+      ...data,
+      experience: data.experience ? parseInt(data.experience) : undefined,
+      pricePerSession: parseFloat(data.pricePerSession),
+      imageUrl: data.imageUrl || undefined,
+    };
+    if (isEditing && trainer?.id) {
+      update.mutate({ id: trainer.id, data: payload }, {
+        onSuccess: () => {
+          toast({ title: "Berhasil!", description: "Personal trainer berhasil diupdate" });
+          onOpenChange(false);
+        },
+        onError: (error) => toast({ title: "Error", description: getErrorMessage(error, "Gagal mengupdate personal trainer"), variant: "destructive" }),
+      });
     } else {
-      createMutation.mutate(data);
+      create.mutate(payload, {
+        onSuccess: () => {
+          toast({ title: "Berhasil!", description: "Personal trainer berhasil ditambahkan" });
+          onOpenChange(false);
+          form.reset();
+        },
+        onError: (error) => toast({ title: "Error", description: getErrorMessage(error, "Gagal menambahkan personal trainer"), variant: "destructive" }),
+      });
     }
   };
 
@@ -152,12 +120,11 @@ export default function AdminPTDialog({ open, onOpenChange, trainer }: AdminPTDi
       setPreview(dataUrl);
       try {
         setUploading(true);
-        const res = await apiRequest('POST', '/api/admin/upload-image', { dataUrl });
-        const json = await res.json();
-        form.setValue('imageUrl', json.url, { shouldDirty: true });
+        const { url } = await uploadsService.uploadImage(dataUrl);
+        form.setValue('imageUrl', url, { shouldDirty: true });
         toast({ title: 'Foto terunggah', description: 'Foto profil berhasil diunggah.' });
-      } catch (err: any) {
-        toast({ title: 'Gagal unggah', description: err?.message || 'Tidak bisa mengunggah foto', variant: 'destructive' });
+      } catch (err) {
+        toast({ title: 'Gagal unggah', description: getErrorMessage(err, 'Tidak bisa mengunggah foto'), variant: 'destructive' });
       } finally {
         setUploading(false);
       }
@@ -191,8 +158,7 @@ export default function AdminPTDialog({ open, onOpenChange, trainer }: AdminPTDi
               <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleFileChange} />
               {(preview || form.watch('imageUrl')) && (
                 <div className="aspect-[1/1] w-40 overflow-hidden rounded-md border border-border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={preview || form.watch('imageUrl')!} alt="Foto Profil" className="w-full h-full object-cover" />
+                  <img src={preview || form.watch('imageUrl')!} alt="Foto Profil" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                 </div>
               )}
             </div>
@@ -324,10 +290,10 @@ export default function AdminPTDialog({ open, onOpenChange, trainer }: AdminPTDi
               <Button
                 type="submit"
                 className="gym-gradient text-white"
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={create.isPending || update.isPending}
                 data-testid="button-submit-trainer"
               >
-                {(createMutation.isPending || updateMutation.isPending) && (
+                {(create.isPending || update.isPending) && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 {isEditing ? "Update" : "Tambah Trainer"}

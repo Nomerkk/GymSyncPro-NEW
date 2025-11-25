@@ -5,7 +5,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { emailService } from "@/services/email";
+import { getErrorMessage } from "@/types/adminDialogs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface MemberInfo {
@@ -140,7 +141,7 @@ export default function AdminEmailDialog({ open, onOpenChange, member }: AdminEm
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (!member) throw new Error("Member tidak ditemukan");
-      return await apiRequest("POST", "/api/admin/email/send", {
+      await emailService.send({
         memberId: member.id,
         subject,
         message,
@@ -152,8 +153,8 @@ export default function AdminEmailDialog({ open, onOpenChange, member }: AdminEm
       toast({ title: "Terkirim", description: "Email berhasil dikirim" });
       onOpenChange(false);
     },
-    onError: (err: any) => {
-      toast({ title: "Gagal", description: err?.message || "Gagal mengirim email", variant: "destructive" });
+    onError: (err) => {
+      toast({ title: "Gagal", description: getErrorMessage(err, "Gagal mengirim email"), variant: "destructive" });
     }
   });
 

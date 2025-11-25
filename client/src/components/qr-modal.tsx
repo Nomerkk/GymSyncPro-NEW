@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useMemberCheckin } from "@/hooks/useCheckins";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import {
@@ -11,78 +10,64 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { QrCode, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
-import QRCode from "qrcode";
+import { QrCode, RefreshCw, CheckCircle2, Info, BarChart3, ChevronRight } from "lucide-react";
+import { format } from "date-fns";
+import { useAuth } from "@/hooks/useAuth";
+import idachiLogoPng from "@assets/idachi1.png";
+import idachiLogoWebp from "@assets/idachi1.webp";
+import { QRCodeCanvas } from "qrcode.react";
+import type { MemberQRData } from "@/services/checkins";
+
+interface CheckInStatusData {
+  success?: boolean;
+  status?: string;
+  user?: { firstName?: string; lastName?: string };
+}
 
 interface QRModalProps {
   isOpen: boolean;
   onClose: () => void;
-  qrData?: any;
+  qrData?: MemberQRData | null;
 }
 
 export default function QRModal({ isOpen, onClose, qrData }: QRModalProps) {
   const { toast } = useToast();
-  const [currentQRData, setCurrentQRData] = useState(qrData);
-  const [qrCodeDataURL, setQrCodeDataURL] = useState<string>("");
+  const { user } = useAuth();
+  const [currentQRData, setCurrentQRData] = useState<MemberQRData | undefined>(qrData ?? undefined);
+  // Render QR via qrcode.react to avoid heavy dataURL generation
+  const [checkInUrl, setCheckInUrl] = useState<string>("");
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [checkInSuccess, setCheckInSuccess] = useState(false);
-  const [checkInData, setCheckInData] = useState<any>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [checkInData, setCheckInData] = useState<CheckInStatusData | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
   // Ensure we only auto-refresh once per code lifecycle to avoid loops
   const hasAutoRefreshedRef = useRef(false);
 
-  const generateNewQRMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/checkin/generate");
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      setCurrentQRData(data);
-      toast({
-        title: "Success",
-        description: "New QR code generated",
-      });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to generate new QR code",
-        variant: "destructive",
-      });
-    },
-  });
+  const { generate: generateCheckin } = useMemberCheckin();
+  
+  // Helper to trigger regeneration
+  const regenerate = () => {
+    generateCheckin.mutate(undefined, {
+      onSuccess: (data: { qrCode: string }) => {
+        setCurrentQRData(data);
+        toast({ title: "Success", description: "New QR code generated" });
+      },
+      onError: (error: unknown) => {
+        if (isUnauthorizedError(error)) {
+          toast({ title: "Unauthorized", description: "You are logged out. Logging in again...", variant: "destructive" });
+          setTimeout(() => { window.location.href = "/login"; }, 500);
+          return;
+        }
+        toast({ title: "Error", description: "Failed to generate new QR code", variant: "destructive" });
+      },
+    });
+  };
 
-  // Generate QR code image when data changes
+  // Update URL to encode into QR whenever QR data changes
   useEffect(() => {
     if (currentQRData?.qrCode) {
-      // Create a URL for the QR code that member can scan to check-in
-      const checkInUrl = `${window.location.origin}/checkin/verify/${currentQRData.qrCode}`;
-      
-      QRCode.toDataURL(checkInUrl, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
-      .then(url => {
-        setQrCodeDataURL(url);
-      })
-      .catch(err => {
-        console.error('Error generating QR code:', err);
-      });
+      const url = `${window.location.origin}/checkin/verify/${currentQRData.qrCode}`;
+      setCheckInUrl(url);
     }
   }, [currentQRData]);
 
@@ -97,22 +82,23 @@ export default function QRModal({ isOpen, onClose, qrData }: QRModalProps) {
   useEffect(() => {
     if (!currentQRData?.expiresAt) return;
 
-    const calculateTimeRemaining = () => {
+    const expiresAt = currentQRData.expiresAt;
+    const calculateTimeRemaining = (exp: string | Date) => {
       const now = new Date().getTime();
-      const expires = new Date(currentQRData.expiresAt).getTime();
+      const expires = new Date(exp).getTime();
       const remaining = Math.max(0, Math.floor((expires - now) / 1000));
       return remaining;
     };
 
     // Initial calculation
-    setTimeRemaining(calculateTimeRemaining());
+    setTimeRemaining(calculateTimeRemaining(expiresAt));
 
     // Track if refresh is already in progress within this interval
     let refreshInProgress = false;
 
     // Update every second
     const interval = setInterval(() => {
-      const remaining = calculateTimeRemaining();
+      const remaining = calculateTimeRemaining(expiresAt);
       setTimeRemaining(remaining);
 
       // Auto-refresh QR shortly before expiry, but only once per lifecycle
@@ -121,17 +107,17 @@ export default function QRModal({ isOpen, onClose, qrData }: QRModalProps) {
         remaining <= 30 &&
         remaining >= 0 &&
         !refreshInProgress &&
-        !generateNewQRMutation.isPending &&
+        !generateCheckin.isPending &&
         !hasAutoRefreshedRef.current
       ) {
         refreshInProgress = true;
         hasAutoRefreshedRef.current = true;
-        generateNewQRMutation.mutate();
+        regenerate();
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentQRData?.expiresAt, generateNewQRMutation]);
+  }, [currentQRData?.expiresAt, generateCheckin.isPending]);
 
   // When we receive a brand new QR (expiresAt or qrCode changes),
   // reset the auto-refresh flag if there is ample time remaining (> 90s)
@@ -144,6 +130,23 @@ export default function QRModal({ isOpen, onClose, qrData }: QRModalProps) {
       hasAutoRefreshedRef.current = false;
     }
   }, [currentQRData?.expiresAt, currentQRData?.qrCode]);
+
+  // Cooldown ticker (server may include cooldownUntil)
+  useEffect(() => {
+    if (!currentQRData?.cooldownUntil) {
+      setCooldownRemaining(0);
+      return;
+    }
+    const until = new Date(currentQRData.cooldownUntil).getTime();
+    const update = () => {
+      const now = Date.now();
+      const left = Math.max(0, Math.floor((until - now) / 1000));
+      setCooldownRemaining(left);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [currentQRData?.cooldownUntil]);
 
   // Poll QR code status to detect when admin scans it
   useEffect(() => {
@@ -184,17 +187,29 @@ export default function QRModal({ isOpen, onClose, qrData }: QRModalProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Display helpers
+  // Member display name (fallback to 'Member')
+  const memberName = (user?.firstName || user?.lastName)
+    ? `${user?.firstName || ''} ${user?.lastName || ''}`.trim()
+    : 'Member';
+  const membershipPlan = currentQRData?.membership?.plan?.name || 'All Club Membership';
+  const membershipEnds = currentQRData?.membership?.endDate ? format(new Date(currentQRData.membership.endDate), 'dd MMM yyyy') : undefined;
+  // const memberCardId = user?.id ? `M${user.id.slice(-6).toUpperCase()}` : undefined; // not used
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md" data-testid="modal-qr-code">
         <DialogHeader>
-          <DialogTitle className="text-center">Check-in QR Code</DialogTitle>
+          <DialogTitle className="text-center flex items-center justify-center gap-2">
+            <QrCode className="w-5 h-5 text-primary" />
+            Check-in QR Code
+          </DialogTitle>
           <DialogDescription className="text-center">
-            Tunjukkan QR ini ke admin untuk melakukan check-in. QR berlaku 5 menit.
+            Tunjukkan QR ini ke admin. QR bersifat permanen dan terkait akun Anda.
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex flex-col items-center space-y-6 p-6">
+  <div className="flex flex-col items-center space-y-6 p-6">
           {/* Check-in Success UI */}
           {checkInSuccess ? (
             <div className="flex flex-col items-center space-y-6 w-full" data-testid="checkin-success-view">
@@ -233,75 +248,95 @@ export default function QRModal({ isOpen, onClose, qrData }: QRModalProps) {
             </div>
           ) : (
             <>
-              {/* Membership Status Badge */}
-              {currentQRData?.hasActiveMembership !== undefined && (
-                <div className={`w-full flex items-center justify-center gap-3 p-4 rounded-lg border-2 ${
-                  currentQRData.hasActiveMembership 
-                    ? 'bg-green-50 dark:bg-green-950/20 border-green-500' 
-                    : 'bg-red-50 dark:bg-red-950/20 border-red-500'
-                }`} data-testid="membership-status-banner">
-                  {currentQRData.hasActiveMembership ? (
-                    <>
-                      <div className="bg-green-500 rounded-full p-2">
-                        <CheckCircle2 className="w-6 h-6 text-white" data-testid="icon-membership-active" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-bold text-green-600 dark:text-green-400" data-testid="text-membership-active">
-                          Membership Active
-                        </h3>
-                        {currentQRData.membership && (
-                          <p className="text-sm text-green-600 dark:text-green-400">
-                            {currentQRData.membership.plan?.name}
-                          </p>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="bg-red-500 rounded-full p-2">
-                        <XCircle className="w-6 h-6 text-white" data-testid="icon-no-membership" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-bold text-red-600 dark:text-red-400" data-testid="text-no-membership">
-                          Belum Terdaftar Membership
-                        </h3>
-                        <p className="text-sm text-red-600 dark:text-red-400">
-                          Silakan daftar membership terlebih dahulu
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              
-              {/* QR Code Display */}
-              <div className="bg-white p-6 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
-                <div className="text-center">
-                  {qrCodeDataURL ? (
-                    <div className="flex flex-col items-center">
-                      <img 
-                        src={qrCodeDataURL} 
-                        alt="Check-in QR Code" 
-                        className="w-48 h-48 rounded-lg"
-                        data-testid="img-qr-code"
-                      />
-                      <p className="text-xs text-gray-500 mt-2">Scan to Check-in</p>
-                      {currentQRData?.qrCode && (
-                        <p className="text-xs text-gray-400 mt-1 font-mono" data-testid="text-qr-code">
-                          ID: {currentQRData.qrCode.slice(-8)}
-                        </p>
-                      )}
+              {/* Membership Card (top) */}
+              {/* Animated glow outline + dark card */}
+              <div className="relative w-full">
+                <div className="absolute -inset-[3px] rounded-3xl bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500 blur-md opacity-50 animate-pulse" aria-hidden />
+                <div className="relative w-full rounded-2xl overflow-hidden shadow-xl p-[2px] bg-gradient-to-r from-emerald-500/70 to-cyan-400/70">
+                  <div className="relative rounded-2xl bg-gradient-to-r from-slate-900 to-teal-800 text-white">
+                    {/* Watermark logo background (IDACHI) */}
+                    <div className="absolute inset-0 pointer-events-none select-none">
+                      <picture className="absolute left-2 top-2 w-48 opacity-20" aria-hidden>
+                        <source srcSet={idachiLogoWebp} type="image/webp" />
+                        <img src={idachiLogoPng} alt="Idachi watermark" className="w-48" loading="lazy" decoding="async" width="192" height="192" />
+                      </picture>
                     </div>
-                  ) : (
-                    <div className="w-48 h-48 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <div className="text-center">
-                        <QrCode size={64} className="text-gray-400 mx-auto mb-2" />
-                        <p className="text-xs text-gray-500">Generating QR Code...</p>
+                    <div className="p-4 relative z-10">
+                      <div className="flex items-start justify-between">
+                        <div className="text-xs/5 opacity-90">All Club Membership</div>
+                        <div className="bg-white/10 rounded-md px-2 py-1 flex items-center gap-2 shadow-sm">
+                          <picture className="h-4 w-auto drop-shadow">
+                            <source srcSet={idachiLogoWebp} type="image/webp" />
+                            <img src={idachiLogoPng} alt="Idachi logo" className="h-4 w-auto" loading="lazy" decoding="async" width="64" height="16" />
+                          </picture>
+                        </div>
+                      </div>
+
+                      {/* Info sections: top-right name, then aligned row Paket vs Berlaku */}
+                      <div className="mt-6 space-y-2 text-[10px]">
+                        <div className="flex justify-end text-right">
+                          <div className="max-w-[60%]">
+                            <div className="opacity-90">Nama Member</div>
+                            <div className="font-semibold truncate">{memberName || '-'}</div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 items-start">
+                          <div className="min-w-0">
+                            <div className="opacity-90">Paket Membership</div>
+                            <div className="font-semibold truncate">{membershipPlan || '-'}</div>
+                          </div>
+                          <div className="text-right min-w-0">
+                            <div className="opacity-90">Berlaku Sampai</div>
+                            <div className="font-semibold">{membershipEnds || '-'}</div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
+
+              {/* QR Block */}
+              <div className="w-full bg-gray-50 dark:bg-gray-900/40 rounded-2xl p-5">
+                <div className="mx-auto max-w-[280px] rounded-xl bg-white dark:bg-gray-950 p-3 shadow-sm">
+                  <div className="rounded-md bg-white p-2 flex items-center justify-center" style={{minHeight: 256}}>
+                    {checkInUrl ? (
+                      <QRCodeCanvas value={checkInUrl} size={256} includeMargin={true} fgColor="#000000" bgColor="#FFFFFF" />
+                    ) : (
+                      <div className="w-[256px] h-[256px] flex items-center justify-center bg-gray-100 rounded-md">
+                        <QrCode size={64} className="text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <p className="text-center text-xs text-muted-foreground mt-4">
+                  Tunjukkan & scan kode QR ini di Club manapun untuk menggunakan fasilitas.
+                </p>
+              </div>
+
+              {/* Cooldown notice */}
+              {cooldownRemaining > 0 && (
+                <div className="w-full flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-amber-800 dark:text-amber-200">
+                  <Info className="w-4 h-4" />
+                  <p className="text-xs">Anda baru saja check-in. Tunggu {formatTime(cooldownRemaining)} sebelum check-in lagi.</p>
+                </div>
+              )}
+
+              {/* Bottom CTA tile */}
+              <button
+                type="button"
+                onClick={() => { onClose(); window.location.href = '/my-profile'; }}
+                className="w-full flex items-center justify-between rounded-2xl bg-white dark:bg-gray-900 border p-4 shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary"><BarChart3 className="w-4 h-4" /></div>
+                  <div className="text-left">
+                    <div className="text-sm font-semibold">Penasaran Dengan Aktivitasmu?</div>
+                    <div className="text-xs text-muted-foreground">Lihat aktivitas kamu di 30 hari terakhir</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </button>
             </>
           )}
 
@@ -326,21 +361,21 @@ export default function QRModal({ isOpen, onClose, qrData }: QRModalProps) {
           {!checkInSuccess && (
             <>
               <p className="text-sm text-muted-foreground text-center">
-                Scan QR code ini untuk check-in otomatis. QR sekali pakai berlaku 5 menit.
+                Scan QR ini untuk check-in. QR ini permanen dan terkait akun Anda.
               </p>
               
               <div className="flex gap-3 w-full">
                 <Button
-                  onClick={() => generateNewQRMutation.mutate()}
-                  disabled={generateNewQRMutation.isPending}
+                  onClick={() => regenerate()}
+                  disabled={generateCheckin.isPending}
                   className="flex-1 gym-gradient text-white"
                   data-testid="button-refresh-qr"
                 >
                   <RefreshCw 
                     size={16} 
-                    className={`mr-2 ${generateNewQRMutation.isPending ? 'animate-spin' : ''}`} 
+                    className={`mr-2 ${generateCheckin.isPending ? 'animate-spin' : ''}`} 
                   />
-                  {generateNewQRMutation.isPending ? "Generating..." : "Generate New Code"}
+                  {generateCheckin.isPending ? "Loading..." : "Tampilkan QR"}
                 </Button>
                 
                 <Button

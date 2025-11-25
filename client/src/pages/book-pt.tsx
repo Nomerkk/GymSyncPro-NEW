@@ -1,52 +1,32 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import BottomNavigation from "@/components/ui/bottom-navigation";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMemberPTBookingActions } from "@/hooks/usePTBookings";
 import { useToast } from "@/hooks/use-toast";
-import { User, Calendar, Clock } from "lucide-react";
+import { User, Calendar } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-
-interface Trainer {
-  id: string;
-  name: string;
-  specialization?: string;
-  pricePerSession?: string;
-  imageUrl?: string;
-  bio?: string;
-  experience?: number;
-  certification?: string;
-}
+import { getErrorMessage } from "@/types/adminDialogs";
+import { trainersService, type TrainerPublic } from "@/services/trainers";
 
 export default function BookPTPage() {
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
 
-  const { data: trainers, isLoading } = useQuery<Trainer[]>({
+  const { data: trainers, isLoading } = useQuery<TrainerPublic[]>({
     queryKey: ["/api/trainers"],
+    queryFn: trainersService.list,
     enabled: isAuthenticated,
   });
 
   const [form, setForm] = useState<Record<string, { datetime: string; sessions: number; notes?: string }>>({});
 
-  const bookPT = useMutation({
-    mutationFn: async (vars: { trainerId: string; bookingDate: string; sessionCount: number; notes?: string }) => {
-      const res = await apiRequest("POST", "/api/pt-bookings", vars);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pt-bookings"] });
-      toast({ title: "Requested!", description: "Your PT session request was sent" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed", description: err?.message || "PT booking failed", variant: "destructive" });
-    },
-  });
+  const { create: bookPT } = useMemberPTBookingActions();
 
   const update = (id: string, patch: Partial<{ datetime: string; sessions: number; notes?: string }>) => {
     setForm((prev) => ({
@@ -144,7 +124,7 @@ export default function BookPTPage() {
                           <div className="rounded-xl overflow-hidden border border-border">
                             <AspectRatio ratio={3/4}>
                               {t.imageUrl ? (
-                                <img src={t.imageUrl} alt={t.name} className="h-full w-full object-cover" />
+                                <img src={t.imageUrl} alt={t.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                               ) : (
                                 <div className="h-full w-full bg-muted flex items-center justify-center text-muted-foreground">PT</div>
                               )}
@@ -203,6 +183,9 @@ export default function BookPTPage() {
                                   bookingDate: new Date(f.datetime).toISOString(),
                                   sessionCount: f.sessions,
                                   notes: f.notes,
+                                }, {
+                                  onSuccess: () => toast({ title: "Requested!", description: "Your PT session request was sent" }),
+                                  onError: (err: unknown) => toast({ title: "Failed", description: getErrorMessage(err, "PT booking failed"), variant: "destructive" })
                                 })
                               }
                             >

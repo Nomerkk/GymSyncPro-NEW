@@ -1,10 +1,11 @@
 import webpush from 'web-push';
 import { storage } from './storage';
-import type { InsertNotification } from '@shared/schema';
+import type { InsertNotification } from '../shared/schema';
+import { env } from './config/index';
 
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-const vapidMailto = process.env.VAPID_MAILTO || 'mailto:admin@yourgym.com';
+const vapidPublicKey = env.push.vapidPublic;
+const vapidPrivateKey = env.push.vapidPrivate;
+const vapidMailto = env.push.mailto;
 
 if (vapidPublicKey && vapidPrivateKey) {
   webpush.setVapidDetails(

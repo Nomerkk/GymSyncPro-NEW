@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
+import { useAdminMembersActions } from "@/hooks/useAdminMembersActions";
 import type { MembershipPlan } from "@shared/schema.ts";
 
 const editMemberSchema = z.object({
@@ -53,7 +52,7 @@ interface AdminEditMemberDialogProps {
 }
 
 export default function AdminEditMemberDialog({ open, onOpenChange, member }: AdminEditMemberDialogProps) {
-  const { toast } = useToast();
+  const { updateMember, assignMembership } = useAdminMembersActions();
   const [activeTab, setActiveTab] = useState("details");
 
   const memberForm = useForm<EditMemberFormData>({
@@ -94,61 +93,21 @@ export default function AdminEditMemberDialog({ open, onOpenChange, member }: Ad
     }
   }, [member, memberForm]);
 
-  const updateMemberMutation = useMutation({
-    mutationFn: async (data: EditMemberFormData) => {
-      const dataToSend = { ...data };
-      if (!data.password) {
-        delete (dataToSend as any).password;
-      }
-      return await apiRequest("PUT", `/api/admin/members/${member?.id}`, dataToSend);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
-      toast({
-        title: "Berhasil!",
-        description: "Data member berhasil diperbarui",
-      });
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal memperbarui data member",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const assignMembershipMutation = useMutation({
-    mutationFn: async (data: AssignMembershipFormData) => {
-      return await apiRequest("POST", `/api/admin/members/${member?.id}/membership`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
-      toast({
-        title: "Berhasil!",
-        description: "Membership berhasil diberikan",
-      });
-      membershipForm.reset();
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Gagal memberikan membership",
-        variant: "destructive",
-      });
-    },
-  });
-
   const onSubmitMemberDetails = (data: EditMemberFormData) => {
-    updateMemberMutation.mutate(data);
+    if (!member?.id) return;
+    updateMember.mutate({ memberId: member.id, data }, {
+      onSuccess: () => onOpenChange(false)
+    });
   };
 
   const onSubmitMembership = (data: AssignMembershipFormData) => {
-    assignMembershipMutation.mutate(data);
+    if (!member?.id) return;
+    assignMembership.mutate({ memberId: member.id, data }, {
+      onSuccess: () => {
+        membershipForm.reset();
+        onOpenChange(false);
+      }
+    });
   };
 
   return (
@@ -291,10 +250,10 @@ export default function AdminEditMemberDialog({ open, onOpenChange, member }: Ad
                   <Button
                     type="submit"
                     className="gym-gradient text-white"
-                    disabled={updateMemberMutation.isPending}
+                    disabled={updateMember.isPending}
                     data-testid="button-save-details"
                   >
-                    {updateMemberMutation.isPending ? "Menyimpan..." : "Simpan Perubahan"}
+                    {updateMember.isPending ? "Menyimpan..." : "Simpan Perubahan"}
                   </Button>
                 </div>
               </form>
@@ -384,10 +343,10 @@ export default function AdminEditMemberDialog({ open, onOpenChange, member }: Ad
                   <Button
                     type="submit"
                     className="gym-gradient text-white"
-                    disabled={assignMembershipMutation.isPending}
+                    disabled={assignMembership.isPending}
                     data-testid="button-assign-membership"
                   >
-                    {assignMembershipMutation.isPending ? "Memproses..." : "Berikan Membership"}
+                    {assignMembership.isPending ? "Memproses..." : "Berikan Membership"}
                   </Button>
                 </div>
               </form>

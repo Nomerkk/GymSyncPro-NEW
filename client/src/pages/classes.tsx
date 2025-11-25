@@ -1,8 +1,8 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import BottomNavigation from "@/components/ui/bottom-navigation";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMemberClassBookingActions } from "@/hooks/useClassBookings";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar, Users, Dumbbell, ChevronRight } from "lucide-react";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -10,44 +10,21 @@ import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { useState } from "react";
 import { Link } from "wouter";
-
-interface GymClass {
-  id: string;
-  name: string;
-  description?: string;
-  imageUrl?: string;
-  instructorName: string;
-  schedule: string;
-  maxCapacity: number;
-  currentEnrollment: number;
-}
+import { getErrorMessage } from "@/types/adminDialogs";
+import { classesService, type GymClassPublic } from "@/services/classes";
 
 export default function ClassesPage() {
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
-  const { data: classes, isLoading } = useQuery<GymClass[]>({
+  const { data: classes, isLoading } = useQuery<GymClassPublic[]>({
     queryKey: ["/api/classes"],
+    queryFn: classesService.list,
     enabled: isAuthenticated,
   });
 
-  const bookClass = useMutation({
-    mutationFn: async (vars: { classId: string; bookingDate: string }) => {
-      const res = await apiRequest("POST", `/api/classes/${vars.classId}/book`, {
-        bookingDate: vars.bookingDate,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/class-bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
-      toast({ title: "Booked!", description: "Your class has been booked" });
-    },
-    onError: async (err: any) => {
-      toast({ title: "Failed", description: err?.message || "Booking failed", variant: "destructive" });
-    },
-  });
+  const { book: bookClass } = useMemberClassBookingActions();
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -86,7 +63,7 @@ export default function ClassesPage() {
           </Card>
         ) : (
           classes.map((c) => {
-            const full = c.currentEnrollment >= c.maxCapacity;
+            const full = (c.currentEnrollment ?? 0) >= c.maxCapacity;
             return (
               <Card key={c.id} className="p-0 border-border bg-card shadow-sm overflow-hidden">
                 {c.imageUrl && (
@@ -114,7 +91,10 @@ export default function ClassesPage() {
                   <span className="text-xs text-muted-foreground">Booking for: {format(new Date(selectedDate), "MMM dd, yyyy")}</span>
                   <Button
                     disabled={full || bookClass.isPending}
-                    onClick={() => bookClass.mutate({ classId: c.id, bookingDate: new Date(selectedDate).toISOString() })}
+                    onClick={() => bookClass.mutate({ classId: c.id, bookingDate: new Date(selectedDate).toISOString() }, {
+                      onSuccess: () => toast({ title: "Booked!", description: "Your class has been booked" }),
+                      onError: (err: unknown) => toast({ title: "Failed", description: getErrorMessage(err, "Booking failed"), variant: "destructive" })
+                    })}
                   >
                     {full ? "Full" : "Book"}
                   </Button>
