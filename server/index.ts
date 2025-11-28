@@ -1,60 +1,13 @@
-import express, { type Request, Response, NextFunction } from "express";
-import compression from "compression";
-import { registerRoutes } from "./routes";
+import { app, registerRoutesPromise } from "./app";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
-import path from 'path';
 import { env } from "./config/index";
+import { Request, Response, NextFunction } from "express";
 
-// Use a separate variable for project root to avoid redeclaring Node's built-in __dirname.
-// Node injects __dirname as a parameter in the CommonJS wrapper, so declaring it again causes a runtime SyntaxError.
-// We want the project root (cwd) rather than the compiled dist/ directory path.
-const projectRoot = process.cwd();
-
-const app = express();
-// Enable gzip compression for all responses (production and dev)
-app.use(compression({ level: 6 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: false, limit: '10mb' }));
-
-// Serve uploaded files statically with reasonable caching
-app.use('/uploads', express.static(path.join(projectRoot, 'uploads'), {
-  maxAge: '7d',
-  immutable: false,
-}));
-
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
-    }
-  });
-
-  next();
-});
+// App initialization and middleware are now in server/app.ts
 
 (async () => {
-  const server = await registerRoutes(app);
+  const server = await registerRoutesPromise;
 
   // Ensure unknown /api routes return JSON 404 instead of falling through to Vite (which would return index.html)
   app.use('/api', (_req: Request, res: Response) => {

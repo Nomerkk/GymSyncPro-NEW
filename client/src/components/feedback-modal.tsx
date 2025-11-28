@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -6,18 +5,19 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { feedbacksService } from "@/services/feedbacks";
 import { useToast } from "@/hooks/use-toast";
-import { Star } from "lucide-react";
 import { getErrorMessage } from "@/types/adminDialogs";
+import { useAuth } from "@/hooks/useAuth";
 
 const feedbackSchema = z.object({
   subject: z.string().min(1, "Subject is required"),
   message: z.string().min(10, "Message must be at least 10 characters"),
-  rating: z.number().min(1).max(5).optional(),
+  isAnonymous: z.boolean().default(false),
 });
 
 type FeedbackFormData = z.infer<typeof feedbackSchema>;
@@ -29,21 +29,23 @@ interface FeedbackModalProps {
 
 export default function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
   const { toast } = useToast();
-  const [rating, setRating] = useState(0);
-  const [hoverRating, setHoverRating] = useState(0);
+  const { user } = useAuth();
 
   const form = useForm<FeedbackFormData>({
     resolver: zodResolver(feedbackSchema),
     defaultValues: {
       subject: "",
       message: "",
-      rating: undefined,
+      isAnonymous: false,
     },
   });
 
   const feedbackMutation = useMutation({
     mutationFn: async (data: FeedbackFormData) => {
-      await feedbacksService.create(data);
+      await feedbacksService.create({
+        ...data,
+        branch: user?.homeBranch || "Jakarta Barat", // Default fallback
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
@@ -52,7 +54,6 @@ export default function FeedbackModal({ open, onOpenChange }: FeedbackModalProps
         description: "Thank you for your feedback!",
       });
       form.reset();
-      setRating(0);
       onOpenChange(false);
     },
     onError: (error: unknown) => {
@@ -65,10 +66,7 @@ export default function FeedbackModal({ open, onOpenChange }: FeedbackModalProps
   });
 
   const onSubmit = (data: FeedbackFormData) => {
-    feedbackMutation.mutate({
-      ...data,
-      rating: rating || undefined,
-    });
+    feedbackMutation.mutate(data);
   };
 
   return (
@@ -120,33 +118,28 @@ export default function FeedbackModal({ open, onOpenChange }: FeedbackModalProps
               )}
             />
 
-            <div className="space-y-2">
-              <FormLabel>Rating (Optional)</FormLabel>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    onClick={() => setRating(star)}
-                    onMouseEnter={() => setHoverRating(star)}
-                    onMouseLeave={() => setHoverRating(0)}
-                    className="focus:outline-none"
-                    data-testid={`button-star-${star}`}
-                  >
-                    <Star
-                      className={`h-8 w-8 transition-colors ${
-                        star <= (hoverRating || rating)
-                          ? "fill-yellow-400 text-yellow-400"
-                          : "text-gray-300"
-                      }`}
+            <FormField
+              control={form.control}
+              name="isAnonymous"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
                     />
-                  </button>
-                ))}
-              </div>
-              {rating > 0 && (
-                <p className="text-sm text-muted-foreground">{rating} out of 5 stars</p>
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>
+                      Kirim sebagai anonim
+                    </FormLabel>
+                    <FormDescription>
+                      Nama dan foto profil Anda tidak akan ditampilkan ke admin.
+                    </FormDescription>
+                  </div>
+                </FormItem>
               )}
-            </div>
+            />
 
             <div className="flex gap-2 justify-end">
               <Button

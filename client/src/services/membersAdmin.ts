@@ -25,23 +25,28 @@ export interface AssignMembershipInput {
 
 export const membersAdminService = {
   async create(data: AdminMemberCreateInput) {
-    return httpFetch('/api/admin/members', { method: 'POST', body: data });
+    const res = await httpFetch('/api/admin/members', { method: 'POST', body: data });
+    return res.json;
   },
   async update(memberId: string, data: AdminMemberUpdateInput) {
     const body: Partial<AdminMemberUpdateInput> = { ...data };
     if (!body.password) delete body.password;
-    return httpFetch(`/api/admin/members/${memberId}`, { method: 'PUT', body: body });
+    const res = await httpFetch(`/api/admin/members/${memberId}`, { method: 'PUT', body: body });
+    return res.json;
   },
   async assignMembership(memberId: string, data: AssignMembershipInput) {
-    return httpFetch(`/api/admin/members/${memberId}/membership`, { method: 'POST', body: data });
+    const res = await httpFetch(`/api/admin/members/${memberId}/membership`, { method: 'POST', body: data });
+    return res.json;
   },
   async suspend(memberId: string) {
-    return httpFetch(`/api/admin/members/${memberId}/suspend`, { method: 'PUT' });
+    const res = await httpFetch(`/api/admin/members/${memberId}/suspend`, { method: 'PUT' });
+    return res.json;
   },
   async activate(memberId: string) {
-    return httpFetch(`/api/admin/members/${memberId}/activate`, { method: 'PUT' });
+    const res = await httpFetch(`/api/admin/members/${memberId}/activate`, { method: 'PUT' });
+    return res.json;
   },
   async remove(memberId: string) {
-    return httpFetch(`/api/admin/members/${memberId}`, { method: 'DELETE' });
+    await httpFetch(`/api/admin/members/${memberId}`, { method: 'DELETE' });
   }
 };

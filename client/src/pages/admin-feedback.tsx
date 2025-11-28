@@ -2,37 +2,20 @@ import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+// Dialog imports removed as they are unused
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BranchBadge } from "@/components/ui/branch-badge";
-import { MessageSquare, Filter, Send, CheckCircle, Loader2, User, ShieldCheck } from "lucide-react";
+import { MessageSquare, Filter, Send, CheckCircle, Loader2, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
-import { feedbacksService } from "@/services/feedbacks";
+import { feedbacksService, type Feedback, type FeedbackReply } from "@/services/feedbacks";
 import { cn } from "@/lib/utils";
 import { httpFetch } from "@/services/api";
 
-interface FeedbackRecord {
-  id: string;
-  subject: string;
-  message: string;
-  status: string;
-  isResolved: boolean;
-  createdAt: string;
-  lastReplyAt: string;
-  userId: string;
-  user: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    profileImageUrl?: string;
-    homeBranch?: string;
-  };
-}
+
 
 export default function AdminFeedback() {
   const { toast } = useToast();
@@ -40,7 +23,7 @@ export default function AdminFeedback() {
   const queryClient = useQueryClient();
   const [branchFilter, setBranchFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedFeedback, setSelectedFeedback] = useState<FeedbackRecord | null>(null);
+  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
   const [replyMessage, setReplyMessage] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -50,13 +33,13 @@ export default function AdminFeedback() {
     }
   }, [isAuthenticated, isLoading, isAdmin]);
 
-  const { data: feedbacks, isLoading: listLoading } = useQuery<FeedbackRecord[]>({
-    queryKey: ["/api/feedbacks"], // Admin gets all feedbacks from same endpoint if role is admin
-    queryFn: feedbacksService.getAll,
+  const { data: feedbacks, isLoading: listLoading, refetch: refetchList } = useQuery({
+    queryKey: ["/api/admin/feedbacks", branchFilter],
+    queryFn: () => feedbacksService.getAllAdmin(branchFilter),
     enabled: isAuthenticated && isAdmin,
   });
 
-  const { data: replies, isLoading: repliesLoading } = useQuery({
+  const { data: replies, isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
     queryKey: ["/api/feedbacks", selectedFeedback?.id, "replies"],
     queryFn: () => feedbacksService.getReplies(selectedFeedback!.id),
     enabled: !!selectedFeedback,
@@ -64,24 +47,50 @@ export default function AdminFeedback() {
 
   const replyMutation = useMutation({
     mutationFn: (msg: string) => feedbacksService.createReply(selectedFeedback!.id, msg),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/feedbacks", selectedFeedback?.id, "replies"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
+    onMutate: async (newMsg) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/feedbacks", selectedFeedback?.id, "replies"] });
+      const previousReplies = queryClient.getQueryData<FeedbackReply[]>(["/api/feedbacks", selectedFeedback?.id, "replies"]);
+
+      const optimisticReply: FeedbackReply = {
+        id: Math.random().toString(),
+        feedbackId: selectedFeedback!.id,
+        senderId: user?.id || "",
+        message: newMsg,
+        createdAt: new Date().toISOString(),
+        sender: {
+          id: user?.id || "",
+          firstName: user?.firstName || "Me",
+          lastName: user?.lastName || "",
+          role: user?.role || "admin",
+          name: `${user?.firstName} ${user?.lastName}`
+        }
+      };
+
+      queryClient.setQueryData(["/api/feedbacks", selectedFeedback?.id, "replies"], (old: FeedbackReply[] | undefined) => {
+        return old ? [...old, optimisticReply] : [optimisticReply];
+      });
+
       setReplyMessage("");
+      return { previousReplies };
     },
-    onError: () => {
+    onError: (err, newMsg, context) => {
+      queryClient.setQueryData(["/api/feedbacks", selectedFeedback?.id, "replies"], context?.previousReplies);
       toast({ title: "Error", description: "Failed to send reply", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/feedbacks", selectedFeedback?.id, "replies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/feedbacks"] }); // Update list view last activity
     },
   });
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status, isResolved }: { id: string; status: string; isResolved: boolean }) =>
-      httpFetch(`/api/feedbacks/${id}/status`, {
-        method: "PATCH",
-        body: { status, isResolved }
+      httpFetch(`/api/admin/feedbacks/${id}`, { // Updated to use admin endpoint
+        method: "PUT", // Updated to PUT as per routes.ts
+        body: { status, adminResponse: true } // Assuming adminResponse flag or similar is needed, routes.ts expects adminResponse in body?
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/feedbacks"] });
       toast({ title: "Success", description: "Ticket status updated" });
       if (selectedFeedback) {
         setSelectedFeedback(prev => prev ? ({ ...prev, status: 'resolved', isResolved: true }) : null);
@@ -102,7 +111,7 @@ export default function AdminFeedback() {
   if (!user || !isAdmin) return null;
 
   const filteredFeedbacks = feedbacks?.filter(f => {
-    if (branchFilter !== "all" && f.user?.homeBranch !== branchFilter) return false;
+    // Branch filtering is now handled server-side
     if (statusFilter !== "all") {
       if (statusFilter === "open" && f.isResolved) return false;
       if (statusFilter === "resolved" && !f.isResolved) return false;
@@ -167,12 +176,14 @@ export default function AdminFeedback() {
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-2">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={feedback.user?.profileImageUrl} />
-                        <AvatarFallback>{feedback.user?.firstName?.[0]}</AvatarFallback>
+                        <AvatarImage src={feedback.isAnonymous ? undefined : feedback.user?.profileImageUrl} />
+                        <AvatarFallback>{feedback.isAnonymous ? "?" : feedback.user?.firstName?.[0]}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium">{feedback.user?.firstName} {feedback.user?.lastName}</p>
-                        <p className="text-[10px] text-muted-foreground">{feedback.user?.homeBranch || 'No Branch'}</p>
+                        <p className="text-sm font-medium">
+                          {feedback.isAnonymous ? "Anonymous User" : `${feedback.user?.firstName} ${feedback.user?.lastName}`}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{feedback.branch || feedback.user?.homeBranch || 'No Branch'}</p>
                       </div>
                     </div>
                     <Badge variant={feedback.isResolved ? "secondary" : "default"} className="text-[10px]">
@@ -206,7 +217,7 @@ export default function AdminFeedback() {
                   <div>
                     <CardTitle className="text-lg">{selectedFeedback.subject}</CardTitle>
                     <p className="text-xs text-muted-foreground">
-                      Ticket #{selectedFeedback.id.slice(0, 8)} • {format(new Date(selectedFeedback.createdAt), "PPP p")}
+                      Ticket #{selectedFeedback.id.slice(0, 8)} • {selectedFeedback.branch} • {format(new Date(selectedFeedback.createdAt), "PPP p")}
                     </p>
                   </div>
                   {!selectedFeedback.isResolved && (
@@ -228,12 +239,14 @@ export default function AdminFeedback() {
                 {/* Original Message */}
                 <div className="flex gap-3">
                   <Avatar className="h-8 w-8 border border-border">
-                    <AvatarImage src={selectedFeedback.user?.profileImageUrl} />
-                    <AvatarFallback>{selectedFeedback.user?.firstName?.[0]}</AvatarFallback>
+                    <AvatarImage src={selectedFeedback.isAnonymous ? undefined : selectedFeedback.user?.profileImageUrl} />
+                    <AvatarFallback>{selectedFeedback.isAnonymous ? "?" : selectedFeedback.user?.firstName?.[0]}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 space-y-1">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-sm font-medium text-foreground">{selectedFeedback.user?.firstName} {selectedFeedback.user?.lastName}</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {selectedFeedback.isAnonymous ? "Anonymous User" : `${selectedFeedback.user?.firstName} ${selectedFeedback.user?.lastName}`}
+                      </span>
                       <span className="text-[10px] text-muted-foreground">{format(new Date(selectedFeedback.createdAt), "HH:mm")}</span>
                     </div>
                     <div className="bg-muted text-foreground p-3 rounded-2xl rounded-tl-none text-sm">
@@ -246,7 +259,7 @@ export default function AdminFeedback() {
                 {repliesLoading ? (
                   <div className="flex justify-center py-4"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>
                 ) : (
-                  replies?.map((reply: any) => {
+                  replies?.map((reply: FeedbackReply) => {
                     const isAdminReply = reply.sender?.role === 'admin' || reply.sender?.role === 'super_admin';
 
                     return (

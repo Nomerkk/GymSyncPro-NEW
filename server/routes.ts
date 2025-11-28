@@ -31,8 +31,6 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// Payment gateway removed: Stripe integration disabled
-
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -41,13 +39,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(healthRouter);
 
   // Admin image upload (base64 data URL)
-  app.post('/api/admin/upload-image', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/upload-image', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { dataUrl } = req.body as { dataUrl?: string };
       if (!dataUrl || typeof dataUrl !== 'string') {
@@ -71,6 +66,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await fs.promises.writeFile(filePath, buffer);
 
       const url = `/uploads/${filename}`;
+
+      await logActivity(userId, "ADMIN_UPLOAD_IMAGE", { filename, url }, req);
+
       res.json({ url });
     } catch (error) {
       console.error('Error uploading image:', error);
@@ -998,33 +996,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Class routes
-  app.get('/api/classes', isAuthenticated, async (req, res) => {
+  app.get('/api/classes', isAuthenticated, async (req: any, res) => {
     try {
       const classes = await storage.getGymClasses();
       res.json(classes);
     } catch (error) {
       console.error("Error fetching classes:", error);
       res.status(500).json({ message: "Failed to fetch classes" });
-    }
-  });
-
-  app.post('/api/classes/:classId/book', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.id;
-      const { classId } = req.params;
-      const { bookingDate } = req.body;
-
-      const booking = await storage.bookClass({
-        userId,
-        classId,
-        bookingDate: new Date(bookingDate),
-        status: 'booked',
-      });
-
-      res.json(booking);
-    } catch (error) {
-      console.error("Error booking class:", error);
-      res.status(500).json({ message: "Failed to book class" });
     }
   });
 
@@ -1036,6 +1014,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching class bookings:", error);
       res.status(500).json({ message: "Failed to fetch class bookings" });
+    }
+  });
+
+  // Feedback routes
+  app.post('/api/feedbacks', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      // Validate body using the schema, but exclude userId as it comes from auth
+      const feedbackData = insertFeedbackSchema.parse({
+        ...req.body,
+        userId,
+        // Ensure defaults if not provided
+        status: 'open',
+      });
+
+      const feedback = await storage.createFeedback(feedbackData);
+
+      res.json(feedback);
+    } catch (error: any) {
+      console.error("Error creating feedback:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid feedback data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create feedback" });
+    }
+  });
+
+  app.get('/api/feedbacks', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const feedbacks = await storage.getUserFeedbacks(userId);
+      res.json(feedbacks);
+    } catch (error) {
+      console.error("Error fetching feedbacks:", error);
+      res.status(500).json({ message: "Failed to fetch feedbacks" });
     }
   });
 
@@ -1074,21 +1087,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Payment gateway removed: disable subscription creation endpoint
-  app.post('/api/create-subscription', isAuthenticated, async (_req: any, res) => {
-    return res.status(501).json({ message: 'Payment gateway is disabled.' });
-  });
+
 
   // Admin routes
   // Admin routes
-  app.get('/api/admin/dashboard', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/dashboard', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
+      const user = req.user; // populated by passport/isAdmin
 
-      if (user?.role !== 'admin' && user?.role !== 'super_admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       // Determine target branch
       // If Super Admin: use query param (or undefined for all)
@@ -1124,14 +1132,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/members', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/members', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const members = await storage.getUsersWithMemberships();
 
@@ -1164,14 +1168,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/members', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/members', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      const user = req.user;
+      // user role check handled by isAdmin middleware
 
       const { password, ...memberData } = req.body;
 
@@ -1268,13 +1269,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: send WhatsApp message to a member
-  app.post('/api/admin/whatsapp/send', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/whatsapp/send', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { memberId, phone, message, previewUrl } = req.body || {};
       if (!message || typeof message !== 'string' || message.trim().length === 0) {
@@ -1295,6 +1293,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const result = await sendWhatsAppText(targetPhone, message.trim(), Boolean(previewUrl));
+
+      await logActivity(userId, "ADMIN_SEND_WHATSAPP", { memberId, phone: targetPhone, message }, req, memberId, 'user');
+
       res.json({ success: true, result });
     } catch (error: any) {
       const status = error?.status || error?.statusCode || 500;
@@ -1303,13 +1304,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: send Email message to a member
-  app.post('/api/admin/email/send', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/email/send', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { memberId, email, subject, message, ctaText, ctaUrl } = req.body || {};
       if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
@@ -1354,20 +1352,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.json({ success: true, fromEmailUsed: fromEmail, result });
+
+      await logActivity(userId, "ADMIN_SEND_EMAIL", { memberId, email: targetEmail, subject }, req, memberId, 'user');
+
     } catch (error: any) {
       const status = error?.status || error?.statusCode || 500;
       res.status(status).json({ message: error?.message || 'Gagal mengirim email' });
     }
   });
 
-  app.put('/api/admin/members/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/members/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const { password, ...updateData } = req.body;
@@ -1392,6 +1389,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updatedMember = await storage.updateUser(id, dataToUpdate);
+
+      await logActivity(userId, "ADMIN_UPDATE_MEMBER", { memberId: id, updates: Object.keys(updateData) }, req, id, 'user');
+
       res.json({ ...updatedMember, password: undefined });
     } catch (error: any) {
       console.error("Error updating member:", error);
@@ -1399,41 +1399,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/members/:id', isAuthenticated, async (req: any, res) => {
+
+
+  app.put('/api/admin/members/:id/suspend', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
-
-      const { id } = req.params;
-      // Prevent deletion if member still has an active membership
-      try {
-        const m = await storage.getUserMembership(id);
-        if (m && (m as any).status === 'active') {
-          return res.status(409).json({ message: 'Tidak dapat menghapus member dengan status membership aktif. Batalkan atau tunggu membership berakhir terlebih dahulu.' });
-        }
-      } catch (_) {
-        // If membership lookup fails, continue to safe path (delete may still be allowed)
-      }
-      await storage.deleteUser(id);
-      res.json({ message: 'Member deleted successfully' });
-    } catch (error) {
-      console.error("Error deleting member:", error);
-      res.status(500).json({ message: "Failed to delete member" });
-    }
-  });
-
-  app.put('/api/admin/members/:id/suspend', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const updatedMember = await storage.updateUser(id, { active: false });
@@ -1441,20 +1412,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: 'Member suspended successfully',
         member: { ...updatedMember, password: undefined }
       });
+      await logActivity(userId, "ADMIN_SUSPEND_MEMBER", { memberId: id }, req, id, 'user');
     } catch (error) {
       console.error("Error suspending member:", error);
       res.status(500).json({ message: "Failed to suspend member" });
     }
   });
 
-  app.put('/api/admin/members/:id/activate', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/members/:id/activate', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const updatedMember = await storage.updateUser(id, { active: true });
@@ -1462,20 +1430,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: 'Member activated successfully',
         member: { ...updatedMember, password: undefined }
       });
+      await logActivity(userId, "ADMIN_ACTIVATE_MEMBER", { memberId: id }, req, id, 'user');
     } catch (error) {
       console.error("Error activating member:", error);
       res.status(500).json({ message: "Failed to activate member" });
     }
   });
 
-  app.post('/api/admin/members/:id/membership', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/members/:id/membership', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id: memberId } = req.params;
       const { planId, durationMonths } = req.body;
@@ -1506,20 +1471,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(membership);
+      await logActivity(userId, "ADMIN_ASSIGN_MEMBERSHIP", { memberId, planId, durationMonths }, req, memberId, 'user');
     } catch (error: any) {
       console.error("Error assigning membership:", error);
       res.status(500).json({ message: error.message || "Failed to assign membership" });
     }
   });
 
-  app.get('/api/admin/membership-plans', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/membership-plans', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const plans = await storage.getAllMembershipPlans();
       res.json(plans);
@@ -1529,17 +1491,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/membership-plans', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/membership-plans', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const validatedData = insertMembershipPlanSchema.parse(req.body);
       const plan = await storage.createMembershipPlan(validatedData);
+      await logActivity(userId, "ADMIN_CREATE_PLAN", { planName: plan.name }, req, plan.id, 'membership_plan');
       res.json(plan);
     } catch (error) {
       console.error("Error creating membership plan:", error);
@@ -1547,19 +1506,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/membership-plans/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/membership-plans/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const updateData = insertMembershipPlanSchema.partial().parse(req.body);
 
       const plan = await storage.updateMembershipPlan(id, updateData);
+      await logActivity(userId, "ADMIN_UPDATE_PLAN", { planId: id, updates: Object.keys(updateData) }, req, id, 'membership_plan');
       res.json(plan);
     } catch (error) {
       console.error("Error updating membership plan:", error);
@@ -1567,17 +1523,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/membership-plans/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/admin/membership-plans/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       await storage.deleteMembershipPlan(id);
+      await logActivity(userId, "ADMIN_DELETE_PLAN", { planId: id }, req, id, 'membership_plan');
       res.json({ message: 'Membership plan deleted successfully' });
     } catch (error) {
       console.error("Error deleting membership plan:", error);
@@ -1585,17 +1538,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/classes', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/classes', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const validatedData = insertGymClassSchema.parse(req.body);
       const gymClass = await storage.createGymClass(validatedData);
+      await logActivity(userId, "ADMIN_CREATE_CLASS", { className: gymClass.name }, req, gymClass.id, 'gym_class');
       res.json(gymClass);
     } catch (error) {
       console.error("Error creating class:", error);
@@ -1603,14 +1553,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/classes', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/classes', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const classes = await storage.getGymClasses();
       res.json(classes);
@@ -1620,19 +1566,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/classes/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/classes/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const updateData = insertGymClassSchema.partial().parse(req.body);
 
       await storage.updateGymClass(id, updateData);
+      await logActivity(userId, "ADMIN_UPDATE_CLASS", { classId: id, updates: Object.keys(updateData) }, req, id, 'gym_class');
       res.json({ message: 'Class updated successfully' });
     } catch (error) {
       console.error("Error updating class:", error);
@@ -1640,17 +1583,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/classes/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/admin/classes/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       await storage.deleteGymClass(id);
+      await logActivity(userId, "ADMIN_DELETE_CLASS", { classId: id }, req, id, 'gym_class');
       res.json({ message: 'Class deleted successfully' });
     } catch (error) {
       console.error("Error deleting class:", error);
@@ -1658,14 +1598,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/class-bookings', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/class-bookings', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const bookings = await storage.getAllClassBookings();
       res.json(bookings);
@@ -1675,14 +1611,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/class-bookings/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/class-bookings/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const { status } = req.body;
@@ -1716,6 +1648,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      await logActivity(userId, "ADMIN_UPDATE_CLASS_BOOKING", { bookingId: id, status }, req, id, 'class_booking');
       res.json({ message: 'Class booking updated successfully' });
     } catch (error) {
       console.error("Error updating class booking:", error);
@@ -1723,17 +1656,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/class-bookings/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/admin/class-bookings/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       await storage.cancelClassBooking(id);
+      await logActivity(userId, "ADMIN_DELETE_CLASS_BOOKING", { bookingId: id }, req, id, 'class_booking');
       res.json({ message: 'Class booking cancelled successfully' });
     } catch (error) {
       console.error("Error cancelling class booking:", error);
@@ -1742,14 +1672,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Check-in routes
-  app.post('/api/admin/checkin/validate', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/checkin/validate', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { qrCode } = req.body;
       if (!qrCode) {
@@ -1869,7 +1795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Check-in preview (no creation) — returns member info only
-  app.post('/api/admin/checkin/preview', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/checkin/preview', isAdmin, async (req: any, res) => {
     try {
       const { qrCode } = req.body;
       if (!qrCode) {
@@ -1929,7 +1855,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Check-in approve (creates the check-in with optional lockerNumber)
-  app.post('/api/admin/checkin/approve', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/checkin/approve', isAdmin, async (req: any, res) => {
     try {
       const { qrCode, lockerNumber } = req.body as { qrCode?: string; lockerNumber?: string };
       if (!qrCode) {
@@ -2002,6 +1928,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      await logActivity(req.user.id, "ADMIN_APPROVE_CHECKIN", { checkInId: created.id, userId: memberUser.id, lockerNumber }, req, created.id, 'check_in');
+
       return res.json({
         success: true,
         checkIn: created,
@@ -2014,14 +1942,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/checkins', isAuthenticated, async (req: any, res) => {
+  app.get('/api/checkins', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const checkIns = await storage.getUserCheckIns(userId, limit);
+      res.json(checkIns);
+    } catch (error) {
+      console.error("Error fetching user check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch check-ins" });
+    }
+  });
 
-      if (user?.role !== 'admin' && user?.role !== 'super_admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+  app.get('/api/admin/checkins', isAdmin, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = req.user;
+      // user role check handled by isAdmin middleware
 
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
 
@@ -2039,16 +1976,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/auto-checkout', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/auto-checkout', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const checkedOutCount = await storage.autoCheckoutExpiredSessions();
+      await logActivity(userId, "ADMIN_AUTO_CHECKOUT", { count: checkedOutCount }, req);
       res.json({
         success: true,
         checkedOutCount,
@@ -2092,10 +2026,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Promotions CRUD
-  app.get('/api/admin/promotions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/promotions', isAdmin, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.id);
-      if (user?.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+      // user role check handled by isAdmin middleware
       const promos = await storage.getAllPromotions();
       // Admin view also sends caching hints, but no 304 to avoid staleness while editing
       res.setHeader('Cache-Control', 'private, max-age=30');
@@ -2106,10 +2039,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/promotions', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/promotions', isAdmin, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.id);
-      if (user?.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+      const userId = req.user.id;
+      // user role check handled by isAdmin middleware
       const payload = insertPromotionSchema.partial({
         startsAt: true,
         endsAt: true,
@@ -2120,6 +2053,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isActive: true,
       }).required({ title: true }).parse(req.body);
       const created = await storage.createPromotion(payload as any);
+      await logActivity(userId, "ADMIN_CREATE_PROMOTION", { title: created.title }, req, created.id, 'promotion');
       res.json(created);
     } catch (error: any) {
       console.error('Error creating promotion:', error);
@@ -2127,13 +2061,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/promotions/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/promotions/:id', isAdmin, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.id);
-      if (user?.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+      const userId = req.user.id;
+      // user role check handled by isAdmin middleware
       const id = req.params.id as string;
       const payload = insertPromotionSchema.partial().parse(req.body);
       await storage.updatePromotion(id, payload as any);
+      await logActivity(userId, "ADMIN_UPDATE_PROMOTION", { promotionId: id, updates: Object.keys(payload) }, req, id, 'promotion');
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error updating promotion:', error);
@@ -2141,12 +2076,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/promotions/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/admin/promotions/:id', isAdmin, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.id);
-      if (user?.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+      const userId = req.user.id;
+      // user role check handled by isAdmin middleware
       const id = req.params.id as string;
       await storage.deletePromotion(id);
+      await logActivity(userId, "ADMIN_DELETE_PROMOTION", { promotionId: id }, req, id, 'promotion');
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting promotion:', error);
@@ -2154,52 +2090,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Feedback routes
-  app.post('/api/feedbacks', isAuthenticated, async (req: any, res) => {
+
+
+  app.get('/api/admin/feedbacks', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const { subject, message, rating } = req.body;
+      const user = req.user;
+      // user role check handled by isAdmin middleware
 
-      if (!subject || !message) {
-        return res.status(400).json({ message: 'Subject and message are required' });
-      }
+      // Determine target branch
+      const branchFilter = req.query.branch as string;
+      const targetBranch: string | undefined = user.role === 'super_admin'
+        ? (branchFilter === 'all' || !branchFilter ? undefined : branchFilter)
+        : (user.homeBranch || undefined);
 
-      const feedback = await storage.createFeedback({
-        userId,
-        subject,
-        message,
-        rating: rating || null,
-        status: 'pending',
-      });
-
-      res.json(feedback);
-    } catch (error) {
-      console.error("Error creating feedback:", error);
-      res.status(500).json({ message: "Failed to create feedback" });
-    }
-  });
-
-  app.get('/api/feedbacks', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.id;
-      const feedbacks = await storage.getUserFeedbacks(userId);
-      res.json(feedbacks);
-    } catch (error) {
-      console.error("Error fetching feedbacks:", error);
-      res.status(500).json({ message: "Failed to fetch feedbacks" });
-    }
-  });
-
-  app.get('/api/admin/feedbacks', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
-
-      const feedbacks = await storage.getAllFeedbacks();
+      const feedbacks = await storage.getAllFeedbacks(undefined, undefined, targetBranch);
       res.json(feedbacks);
     } catch (error) {
       console.error("Error fetching all feedbacks:", error);
@@ -2207,14 +2112,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/feedbacks/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/feedbacks/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      const user = req.user;
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const { status, adminResponse } = req.body;
@@ -2223,7 +2125,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Status is required' });
       }
 
+      // Check branch access for regular admins
+      if (user.role !== 'super_admin') {
+        const feedback = await storage.getFeedbackById(id);
+        if (!feedback) {
+          return res.status(404).json({ message: "Feedback not found" });
+        }
+        if (feedback.branch !== user.homeBranch) {
+          return res.status(403).json({ message: "Unauthorized: Branch mismatch" });
+        }
+      }
+
       await storage.updateFeedbackStatus(id, status, adminResponse);
+      await logActivity(userId, "ADMIN_UPDATE_FEEDBACK", { feedbackId: id, status, hasResponse: !!adminResponse }, req, id, 'feedback');
       res.json({ message: 'Feedback updated successfully' });
     } catch (error) {
       console.error("Error updating feedback:", error);
@@ -2259,14 +2173,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin PT management routes
-  app.get('/api/admin/trainers', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/trainers', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const trainers = await storage.getAllTrainers();
       res.json(trainers);
@@ -2276,14 +2186,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/trainers', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/trainers', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const trainerSchema = z.object({
         name: z.string().min(1, "Name is required"),
@@ -2299,6 +2205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = trainerSchema.parse(req.body);
       const trainer = await storage.createTrainer(validatedData);
+      await logActivity(userId, "ADMIN_CREATE_TRAINER", { trainerName: trainer.name }, req, trainer.id, 'trainer');
       res.json(trainer);
     } catch (error: any) {
       console.error("Error creating trainer:", error);
@@ -2309,14 +2216,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/trainers/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/trainers/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
 
@@ -2334,6 +2237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = updateTrainerSchema.parse(req.body);
       await storage.updateTrainer(id, validatedData);
+      await logActivity(userId, "ADMIN_UPDATE_TRAINER", { trainerId: id, updates: Object.keys(validatedData) }, req, id, 'trainer');
       res.json({ message: 'Trainer updated successfully' });
     } catch (error: any) {
       console.error("Error updating trainer:", error);
@@ -2344,17 +2248,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/trainers/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/admin/trainers/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       await storage.deleteTrainer(id);
+      await logActivity(userId, "ADMIN_DELETE_TRAINER", { trainerId: id }, req, id, 'trainer');
       res.json({ message: 'Trainer deleted successfully' });
     } catch (error) {
       console.error("Error deleting trainer:", error);
@@ -2433,14 +2334,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin PT booking management
-  app.get('/api/admin/pt-bookings', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/pt-bookings', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const bookings = await storage.getAllPtBookings();
       res.json(bookings);
@@ -2450,14 +2347,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/pt-bookings/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/pt-bookings/:id', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const { status } = req.body;
@@ -2491,6 +2384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      await logActivity(userId, "ADMIN_UPDATE_PT_BOOKING", { bookingId: id, status }, req, id, 'pt_booking');
       res.json({ message: 'PT booking updated successfully' });
     } catch (error) {
       console.error("Error updating PT booking:", error);
@@ -2634,7 +2528,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
 
       if (user?.role === 'admin' || user?.role === 'super_admin') {
-        const feedbacks = await storage.getAllFeedbacks();
+        const branchFilter = user.role === 'super_admin' ? undefined : user.homeBranch;
+        const feedbacks = await storage.getAllFeedbacks(undefined, undefined, branchFilter || undefined);
         res.json(feedbacks);
       } else {
         const feedbacks = await storage.getUserFeedbacks(userId);
@@ -2657,6 +2552,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check authorization
+      if (req.user.role === 'admin' && req.user.homeBranch && feedback.branch && feedback.branch !== req.user.homeBranch) {
+        return res.status(403).json({ message: "Unauthorized: Branch mismatch" });
+      }
+
       if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && feedback.userId !== userId) {
         return res.status(403).json({ message: "Unauthorized" });
       }
@@ -2699,6 +2598,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check authorization
+      if (req.user.role === 'admin' && req.user.homeBranch && feedback.branch && feedback.branch !== req.user.homeBranch) {
+        return res.status(403).json({ message: "Unauthorized: Branch mismatch" });
+      }
+
       if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && feedback.userId !== userId) {
         return res.status(403).json({ message: "Unauthorized" });
       }
@@ -2791,13 +2694,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin PT session attendance routes
-  app.get('/api/admin/pt-session-packages', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/pt-session-packages', isAdmin, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.id);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       // Get all users' packages
       const allUsers = await storage.getAllUsers();
@@ -2818,13 +2717,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/pt-session-attendance', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/pt-session-attendance', isAdmin, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.id);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       // Get all users' sessions
       const allUsers = await storage.getAllUsers();
@@ -2845,14 +2740,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/pt-session-attendance/:id/confirm', isAuthenticated, async (req: any, res) => {
+  app.put('/api/admin/pt-session-attendance/:id/confirm', isAdmin, async (req: any, res) => {
     try {
       const adminId = req.user.id;
-      const user = await storage.getUser(adminId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { id } = req.params;
       const session = await storage.getPtSessionAttendanceById(id);
@@ -2891,6 +2782,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isRead: false,
       });
 
+      await logActivity(adminId, "ADMIN_CONFIRM_PT_SESSION", { sessionId: id, userId: session.userId }, req, id, 'pt_session_attendance');
+
       res.json({ message: 'Session confirmed successfully' });
     } catch (error) {
       console.error("Error confirming PT session:", error);
@@ -2899,18 +2792,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Inactivity reminder endpoint
-  app.post('/api/admin/send-inactivity-reminders', isAuthenticated, async (req: any, res) => {
+  app.post('/api/admin/send-inactivity-reminders', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const { daysInactive = 7 } = req.body;
 
       const reminderCount = await storage.sendInactivityReminders(daysInactive);
+
+      await logActivity(userId, "ADMIN_SEND_INACTIVITY_REMINDERS", { count: reminderCount, daysInactive }, req);
 
       res.json({
         message: `Berhasil mengirim ${reminderCount} reminder ke member yang tidak aktif`,
@@ -2924,14 +2815,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get inactive members endpoint
-  app.get('/api/admin/inactive-members', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/inactive-members', isAdmin, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
-
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-      }
+      // user role check handled by isAdmin middleware
 
       const daysInactive = parseInt(req.query.days as string) || 7;
 

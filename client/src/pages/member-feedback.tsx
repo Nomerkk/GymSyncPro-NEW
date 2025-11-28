@@ -1,16 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { feedbacksService } from "@/services/feedbacks";
+import { feedbacksService, type Feedback } from "@/services/feedbacks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import BottomNavigation from "@/components/ui/bottom-navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Plus, MessageSquare, ChevronRight, Loader2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
@@ -22,6 +23,8 @@ import { format } from "date-fns";
 const createFeedbackSchema = z.object({
     subject: z.string().min(1, "Subject is required"),
     message: z.string().min(1, "Message is required"),
+    branch: z.string().min(1, "Branch is required"),
+    isAnonymous: z.boolean().default(false),
 });
 
 export default function MemberFeedback() {
@@ -42,19 +45,53 @@ export default function MemberFeedback() {
         defaultValues: {
             subject: "",
             message: "",
+            branch: "",
+            isAnonymous: false,
         },
     });
 
     const createMutation = useMutation({
         mutationFn: feedbacksService.create,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
-            toast({ title: "Success", description: "Feedback ticket created" });
+        onMutate: async (newFeedbackData) => {
+            // 1. Close dialog immediately
             setIsDialogOpen(false);
             form.reset();
+            toast({ title: "Success", description: "Feedback ticket created" });
+
+            // 2. Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+            await queryClient.cancelQueries({ queryKey: ["/api/feedbacks"] });
+
+            // 3. Snapshot the previous value
+            const previousFeedbacks = queryClient.getQueryData<Feedback[]>(["/api/feedbacks"]);
+
+            // 4. Optimistic update
+            const optimisticFeedback: Feedback = {
+                id: Math.random().toString(), // Temp ID
+                subject: newFeedbackData.subject,
+                message: newFeedbackData.message,
+                branch: newFeedbackData.branch,
+                status: 'open',
+                isResolved: false,
+                createdAt: new Date().toISOString(),
+                lastReplyAt: new Date().toISOString(),
+                userId: "", // Will be filled by backend, irrelevant for list view usually
+            };
+
+            queryClient.setQueryData(["/api/feedbacks"], (old: Feedback[] | undefined) => {
+                return old ? [optimisticFeedback, ...old] : [optimisticFeedback];
+            });
+
+            // Return a context object with the snapshotted value
+            return { previousFeedbacks };
         },
-        onError: () => {
+        onError: (err, newFeedback, context) => {
+            // If the mutation fails, use the context returned from onMutate to roll back
+            queryClient.setQueryData(["/api/feedbacks"], context?.previousFeedbacks);
             toast({ title: "Error", description: "Failed to create feedback", variant: "destructive" });
+        },
+        onSettled: () => {
+            // Always refetch after error or success:
+            queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
         },
     });
 
@@ -84,6 +121,9 @@ export default function MemberFeedback() {
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Create Support Ticket</DialogTitle>
+                            <DialogDescription>
+                                Fill out the form below to submit a new support ticket.
+                            </DialogDescription>
                         </DialogHeader>
                         <Form {...form}>
                             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -102,6 +142,27 @@ export default function MemberFeedback() {
                                 />
                                 <FormField
                                     control={form.control}
+                                    name="branch"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Branch</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select a branch" />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                                                    <SelectItem value="Cikarang">Cikarang</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
                                     name="message"
                                     render={({ field }) => (
                                         <FormItem>
@@ -110,6 +171,25 @@ export default function MemberFeedback() {
                                                 <Textarea placeholder="Describe your issue or feedback in detail..." className="min-h-[100px]" {...field} />
                                             </FormControl>
                                             <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="isAnonymous"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                            <FormControl>
+                                                <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                                            </FormControl>
+                                            <div className="space-y-1 leading-none">
+                                                <FormLabel>
+                                                    Submit Anonymously
+                                                </FormLabel>
+                                                <DialogDescription>
+                                                    Your name will be hidden from admins.
+                                                </DialogDescription>
+                                            </div>
                                         </FormItem>
                                     )}
                                 />
@@ -126,7 +206,15 @@ export default function MemberFeedback() {
                     <div className="flex items-center justify-center py-20">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
-                ) : !feedbacks || feedbacks.length === 0 ? (
+                ) : !feedbacks ? (
+                    <Card className="p-8 text-center border-border bg-card shadow-sm">
+                        <div className="flex flex-col items-center gap-3">
+                            <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                            <p className="font-semibold text-red-500">Failed to load tickets</p>
+                            <p className="text-sm text-muted-foreground">Please try again later</p>
+                        </div>
+                    </Card>
+                ) : feedbacks.length === 0 ? (
                     <Card className="p-8 text-center border-border bg-card shadow-sm">
                         <div className="flex flex-col items-center gap-3">
                             <MessageSquare className="h-8 w-8 text-muted-foreground" />
@@ -136,7 +224,7 @@ export default function MemberFeedback() {
                     </Card>
                 ) : (
                     <div className="space-y-3">
-                        {feedbacks.map((feedback: any) => (
+                        {feedbacks.map((feedback: Feedback) => (
                             <Card
                                 key={feedback.id}
                                 className="p-4 border-border bg-card shadow-sm active:scale-[0.99] transition-transform cursor-pointer"

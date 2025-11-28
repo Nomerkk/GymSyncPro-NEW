@@ -1,5 +1,6 @@
+
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,7 +149,7 @@ export default function AdminPlans() {
                     size="sm"
                     className="flex-1"
                     onClick={() => handleEditPlan(plan)}
-                    data-testid={`button-edit-plan-${plan.id}`}
+                    data-testid={`button - edit - plan - ${plan.id} `}
                   >
                     <Edit size={16} className="mr-2" />
                     Edit
@@ -157,7 +158,7 @@ export default function AdminPlans() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleDeletePlan(plan.id)}
-                    data-testid={`button-delete-plan-${plan.id}`}
+                    data-testid={`button - delete -plan - ${plan.id} `}
                   >
                     <Trash2 size={16} className="text-destructive" />
                   </Button>

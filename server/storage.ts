@@ -132,7 +132,7 @@ export interface IStorage {
   // Feedback operations
   createFeedback(feedback: InsertFeedback): Promise<Feedback>;
   getUserFeedbacks(userId: string): Promise<Feedback[]>;
-  getAllFeedbacks(limit?: number, offset?: number): Promise<(Feedback & { user: User })[]>;
+  getAllFeedbacks(limit?: number, offset?: number, branch?: string): Promise<(Feedback & { user: User })[]>;
   getFeedbackById(id: string): Promise<(Feedback & { user: User }) | undefined>;
   updateFeedbackStatus(id: string, status: string, isResolved?: boolean): Promise<void>;
 
@@ -1379,7 +1379,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(feedbacks.lastReplyAt));
   }
 
-  async getAllFeedbacks(limit?: number, offset?: number): Promise<(Feedback & { user: User })[]> {
+  async getAllFeedbacks(limit?: number, offset?: number, branch?: string): Promise<(Feedback & { user: User })[]> {
+    const conditions = [];
+    if (branch) {
+      conditions.push(eq(feedbacks.branch, branch));
+    }
+
     const query = db
       .select({
         id: feedbacks.id,
@@ -1391,12 +1396,15 @@ export class DatabaseStorage implements IStorage {
         isResolved: feedbacks.isResolved,
         lastReplyAt: feedbacks.lastReplyAt,
         adminResponse: feedbacks.adminResponse,
+        branch: feedbacks.branch,
+        isAnonymous: feedbacks.isAnonymous,
         createdAt: feedbacks.createdAt,
         updatedAt: feedbacks.updatedAt,
         user: users,
       })
       .from(feedbacks)
       .innerJoin(users, eq(feedbacks.userId, users.id))
+      .where(and(...conditions))
       .orderBy(desc(feedbacks.lastReplyAt));
 
     if (limit) query.limit(limit);
@@ -1417,6 +1425,8 @@ export class DatabaseStorage implements IStorage {
         isResolved: feedbacks.isResolved,
         lastReplyAt: feedbacks.lastReplyAt,
         adminResponse: feedbacks.adminResponse,
+        branch: feedbacks.branch,
+        isAnonymous: feedbacks.isAnonymous,
         createdAt: feedbacks.createdAt,
         updatedAt: feedbacks.updatedAt,
         user: users,
@@ -2154,10 +2164,10 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(auditLogs.branch, branch));
     }
     if (search) {
-      const searchLower = `% ${search.toLowerCase()}% `;
+      const searchLower = `%${search.toLowerCase()}%`;
       conditions.push(or(
         ilike(auditLogs.action, searchLower),
-        ilike(auditLogs.details, searchLower), // Note: ilike on jsonb might not work directly in all postgres versions, but usually casts to text
+        ilike(auditLogs.details, searchLower),
         ilike(users.firstName, searchLower),
         ilike(users.lastName, searchLower),
         ilike(users.email, searchLower)

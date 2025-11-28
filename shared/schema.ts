@@ -168,6 +168,8 @@ export const feedbacks = pgTable("feedbacks", {
   isResolved: boolean("is_resolved").default(false),
   lastReplyAt: timestamp("last_reply_at").defaultNow(),
   adminResponse: text("admin_response"), // Deprecated, kept for backward compatibility
+  branch: varchar("branch"), // The branch this feedback is related to
+  isAnonymous: boolean("is_anonymous").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => {
@@ -616,8 +618,11 @@ export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
   updatedAt: true,
   lastReplyAt: true,
   isResolved: true,
+  rating: true,
+}).extend({
+  branch: z.string().optional(),
+  isAnonymous: z.boolean().optional(),
 });
-
 export const insertFeedbackReplySchema = createInsertSchema(feedbackReplies).omit({
   id: true,
   createdAt: true,

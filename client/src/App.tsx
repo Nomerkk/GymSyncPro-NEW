@@ -33,6 +33,8 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const Landing = lazy(() => import("@/pages/landing"));
 const MemberFeedback = lazy(() => import("@/pages/member-feedback"));
 const MemberFeedbackDetail = lazy(() => import("@/pages/member-feedback-detail"));
+const HistoryCheckins = lazy(() => import("@/pages/history-checkins"));
+const HistoryPurchases = lazy(() => import("@/pages/history-purchases"));
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -90,6 +92,8 @@ function Router() {
             <Route path="/terms" component={Terms} />
             <Route path="/feedback" component={MemberFeedback} />
             <Route path="/feedback/:id" component={MemberFeedbackDetail} />
+            <Route path="/history/checkins" component={HistoryCheckins} />
+            <Route path="/history/purchases" component={HistoryPurchases} />
 
             {/* Auth Redirects - Only redirect /login and /register for members */}
             <Route path="/login">
