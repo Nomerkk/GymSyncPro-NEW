@@ -5,6 +5,7 @@ import { Menu, Bell, LogOut, User } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useAuthActions } from "@/hooks/useAuthActions";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import BrandWatermark from "@/components/brand-watermark";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +18,7 @@ import {
 interface AdminUserLite {
   firstName?: string;
   lastName?: string;
-  email?: string;
+  email?: string | null;
   profileImageUrl?: string | null;
 }
 
@@ -50,13 +51,13 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <AdminSidebar 
-        isOpen={sidebarOpen} 
+      <AdminSidebar
+        isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
-      
+
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Modern Top Bar */}
         <header className="h-16 border-b border-border bg-card/50 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6 z-10 sticky top-0">
@@ -80,7 +81,7 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
               </p>
             </div>
           </div>
-          
+
           {/* Right Side Actions */}
           <div className="flex items-center gap-2">
             {/* Notifications */}
@@ -101,8 +102,8 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
             {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   className="relative h-10 rounded-lg hover:bg-muted transition-all duration-200 hover:scale-105 active:scale-95 px-2"
                   data-testid="button-user-menu"
                 >
@@ -137,7 +138,7 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
                   <span>Profile Settings</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   onClick={handleLogout}
                   className="cursor-pointer text-destructive focus:text-destructive"
                   data-testid="button-logout"
@@ -151,8 +152,9 @@ export default function AdminLayout({ user, notificationCount = 0, children }: A
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto bg-background">
-          <div className="p-4 sm:p-6 lg:p-8 max-w-[1800px] mx-auto animate-fade-in">
+        <main className="flex-1 overflow-y-auto bg-background relative">
+          <BrandWatermark opacity={0.05} />
+          <div className="p-4 sm:p-6 lg:p-8 max-w-[1800px] mx-auto animate-fade-in relative z-10">
             {children}
           </div>
         </main>

@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { httpFetch } from "@/services/api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -7,6 +8,7 @@ import { notificationsService } from "@/services/notifications";
 import { Bell, Check, Trash2, CheckCheck } from "lucide-react";
 import { format } from "date-fns";
 import type { Notification } from "@shared/schema.ts";
+import { useAuth } from "@/hooks/useAuth";
 
 interface NotificationsSheetProps {
   children: React.ReactNode;
@@ -15,24 +17,29 @@ interface NotificationsSheetProps {
 }
 
 export default function NotificationsSheet({ children, open, onOpenChange }: NotificationsSheetProps) {
+  const { user } = useAuth();
   const { data: notifications, isLoading } = useQuery<Notification[]>({
-    queryKey: ["/api/notifications"],
+    queryKey: ["notifications-scoped", user?.id],
+    queryFn: async () => {
+      const res = await httpFetch<Notification[]>("/api/notifications");
+      return res.json || [];
+    },
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const markAsReadMutation = useMutation({
     mutationFn: (id: string) => notificationsService.markRead(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications-scoped"] }),
   });
 
   const markAllAsReadMutation = useMutation({
     mutationFn: () => notificationsService.markAllRead(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications-scoped"] }),
   });
 
   const deleteNotificationMutation = useMutation({
     mutationFn: (id: string) => notificationsService.remove(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications-scoped"] }),
   });
 
   const unreadCount = notifications?.filter(n => !n.isRead).length || 0;
@@ -76,8 +83,8 @@ export default function NotificationsSheet({ children, open, onOpenChange }: Not
                   key={notification.id}
                   className={`
                     p-4 rounded-lg border transition-colors
-                    ${notification.isRead 
-                      ? 'bg-background border-border' 
+                    ${notification.isRead
+                      ? 'bg-background border-border'
                       : 'bg-primary/5 border-primary/20'
                     }
                   `}
@@ -98,7 +105,7 @@ export default function NotificationsSheet({ children, open, onOpenChange }: Not
                         {notification.createdAt && format(new Date(notification.createdAt), "dd MMM yyyy, HH:mm")}
                       </p>
                     </div>
-                    
+
                     <div className="flex gap-1">
                       {!notification.isRead && (
                         <Button

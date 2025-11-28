@@ -31,13 +31,14 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: varchar("username").unique().notNull(),
   password: varchar("password").notNull(),
-  email: varchar("email").unique().notNull(),
+  email: varchar("email").unique(),
   firstName: varchar("first_name").notNull(),
   lastName: varchar("last_name").notNull(),
   phone: varchar("phone"),
   profileImageUrl: varchar("profile_image_url"),
   permanentQrCode: varchar("permanent_qr_code"),
   role: varchar("role").default("member"), // member, admin
+  homeBranch: varchar("home_branch"), // For admins: assigned branch. For members: home location.
   active: boolean("active").default(true), // true = active, false = suspended
   emailVerified: boolean("email_verified").default(false),
   verificationCode: varchar("verification_code"),
@@ -46,6 +47,10 @@ export const users = pgTable("users", {
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => {
+  return {
+    permanentQrCodeIdx: index("IDX_users_permanent_qr_code").on(table.permanentQrCode),
+  };
 });
 
 // Membership plans
@@ -71,6 +76,12 @@ export const memberships = pgTable("memberships", {
   status: varchar("status").default("active"), // active, expired, cancelled
   autoRenewal: boolean("auto_renewal").default(true),
   createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_memberships_user_id").on(table.userId),
+    planIdIdx: index("IDX_memberships_plan_id").on(table.planId),
+    statusIdx: index("IDX_memberships_status").on(table.status),
+  };
 });
 
 // Gym classes
@@ -84,7 +95,12 @@ export const gymClasses = pgTable("gym_classes", {
   maxCapacity: integer("max_capacity").notNull(),
   currentEnrollment: integer("current_enrollment").default(0),
   active: boolean("active").default(true),
+  branch: varchar("branch"), // Branch location
   createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    activeIdx: index("IDX_gym_classes_active").on(table.active),
+  };
 });
 
 // Class bookings
@@ -95,6 +111,12 @@ export const classBookings = pgTable("class_bookings", {
   bookingDate: timestamp("booking_date").notNull(),
   status: varchar("status").default("booked"), // booked, attended, cancelled
   createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_class_bookings_user_id").on(table.userId),
+    classIdIdx: index("IDX_class_bookings_class_id").on(table.classId),
+    bookingDateIdx: index("IDX_class_bookings_booking_date").on(table.bookingDate),
+  };
 });
 
 // Check-ins
@@ -105,8 +127,16 @@ export const checkIns = pgTable("check_ins", {
   checkOutTime: timestamp("check_out_time"),
   qrCode: varchar("qr_code").notNull(),
   lockerNumber: varchar("locker_number"),
+  branch: varchar("branch"), // The branch where check-in occurred
   status: varchar("status").default("active"), // active, completed
   createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_check_ins_user_id").on(table.userId),
+    checkInTimeIdx: index("IDX_check_ins_check_in_time").on(table.checkInTime),
+    statusIdx: index("IDX_check_ins_status").on(table.status),
+    branchIdx: index("IDX_check_ins_branch").on(table.branch),
+  };
 });
 
 // Payments
@@ -120,6 +150,11 @@ export const payments = pgTable("payments", {
   status: varchar("status").notNull(), // pending, completed, failed, refunded
   description: text("description"),
   createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_payments_user_id").on(table.userId),
+    createdAtIdx: index("IDX_payments_created_at").on(table.createdAt),
+  };
 });
 
 // Feedback
@@ -129,10 +164,33 @@ export const feedbacks = pgTable("feedbacks", {
   subject: varchar("subject").notNull(),
   message: text("message").notNull(),
   rating: integer("rating"), // 1-5 stars
-  status: varchar("status").default("pending"), // pending, reviewed, resolved
-  adminResponse: text("admin_response"),
+  status: varchar("status").default("open"), // open, resolved (changed from pending/reviewed)
+  isResolved: boolean("is_resolved").default(false),
+  lastReplyAt: timestamp("last_reply_at").defaultNow(),
+  adminResponse: text("admin_response"), // Deprecated, kept for backward compatibility
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_feedbacks_user_id").on(table.userId),
+    createdAtIdx: index("IDX_feedbacks_created_at").on(table.createdAt),
+    statusIdx: index("IDX_feedbacks_status").on(table.status),
+  };
+});
+
+// Feedback Replies
+export const feedbackReplies = pgTable("feedback_replies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  feedbackId: varchar("feedback_id").notNull().references(() => feedbacks.id),
+  senderId: varchar("sender_id").notNull().references(() => users.id),
+  message: text("message").notNull(),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    feedbackIdIdx: index("IDX_feedback_replies_feedback_id").on(table.feedbackId),
+    createdAtIdx: index("IDX_feedback_replies_created_at").on(table.createdAt),
+  };
 });
 
 // Personal Trainers
@@ -147,8 +205,14 @@ export const personalTrainers = pgTable("personal_trainers", {
   pricePerSession: decimal("price_per_session", { precision: 10, scale: 2 }).notNull(),
   availability: jsonb("availability"), // Store available days/times
   active: boolean("active").default(true),
+  branch: varchar("branch"), // Branch location
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => {
+  return {
+    activeIdx: index("IDX_personal_trainers_active").on(table.active),
+    branchIdx: index("IDX_personal_trainers_branch").on(table.branch),
+  };
 });
 
 // PT Bookings
@@ -163,6 +227,11 @@ export const ptBookings = pgTable("pt_bookings", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_pt_bookings_user_id").on(table.userId),
+    bookingDateIdx: index("IDX_pt_bookings_booking_date").on(table.bookingDate),
+  };
 });
 
 // PT Session Packages (member buys X sessions)
@@ -180,6 +249,10 @@ export const ptSessionPackages = pgTable("pt_session_packages", {
   expiryDate: timestamp("expiry_date"), // optional expiry
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_pt_session_packages_user_id").on(table.userId),
+  };
 });
 
 // PT Session Attendance (tracks each session)
@@ -199,18 +272,14 @@ export const ptSessionAttendance = pgTable("pt_session_attendance", {
   confirmedAt: timestamp("confirmed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_pt_session_attendance_user_id").on(table.userId),
+    sessionDateIdx: index("IDX_pt_session_attendance_session_date").on(table.sessionDate),
+  };
 });
 
-// One-time QR codes for check-in
-export const oneTimeQrCodes = pgTable("one_time_qr_codes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  qrCode: varchar("qr_code").notNull().unique(),
-  expiresAt: timestamp("expires_at").notNull(),
-  usedAt: timestamp("used_at"),
-  status: varchar("status").default("valid"), // valid, used, expired
-  createdAt: timestamp("created_at").defaultNow(),
-});
+
 
 // Password reset tokens
 export const passwordResetTokens = pgTable("password_reset_tokens", {
@@ -233,6 +302,11 @@ export const notifications = pgTable("notifications", {
   relatedId: varchar("related_id"), // ID of related booking, membership, etc.
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_notifications_user_id").on(table.userId),
+    isReadIdx: index("IDX_notifications_is_read").on(table.isRead),
+  };
 });
 
 // Push Subscriptions
@@ -244,6 +318,10 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   auth: text("auth").notNull(),
   userAgent: text("user_agent"),
   createdAt: timestamp("created_at").defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("IDX_push_subscriptions_user_id").on(table.userId),
+  };
 });
 
 // Promotions (admin-managed, shown to members)
@@ -262,6 +340,32 @@ export const promotions = pgTable("promotions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Audit Logs table
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  action: varchar("action").notNull(), // e.g., 'CHECK_IN_APPROVE', 'MEMBER_CREATE'
+  entityId: varchar("entity_id"), // ID of the affected object
+  entityType: varchar("entity_type"), // e.g., 'check_in', 'user'
+  details: jsonb("details"), // Snapshot of changes or inputs
+  ipAddress: varchar("ip_address"),
+  userAgent: varchar("user_agent"),
+  branch: varchar("branch"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs);
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+// Relations
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
@@ -272,9 +376,9 @@ export const usersRelations = relations(users, ({ many }) => ({
   ptBookings: many(ptBookings),
   ptSessionPackages: many(ptSessionPackages),
   ptSessionAttendance: many(ptSessionAttendance),
-  oneTimeQrCodes: many(oneTimeQrCodes),
   notifications: many(notifications),
   pushSubscriptions: many(pushSubscriptions),
+  auditLogs: many(auditLogs),
 }));
 
 export const membershipPlansRelations = relations(membershipPlans, ({ many }) => ({
@@ -326,9 +430,21 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
   }),
 }));
 
-export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
+export const feedbacksRelations = relations(feedbacks, ({ one, many }) => ({
   user: one(users, {
     fields: [feedbacks.userId],
+    references: [users.id],
+  }),
+  replies: many(feedbackReplies),
+}));
+
+export const feedbackRepliesRelations = relations(feedbackReplies, ({ one }) => ({
+  feedback: one(feedbacks, {
+    fields: [feedbackReplies.feedbackId],
+    references: [feedbacks.id],
+  }),
+  sender: one(users, {
+    fields: [feedbackReplies.senderId],
     references: [users.id],
   }),
 }));
@@ -377,12 +493,7 @@ export const ptSessionAttendanceRelations = relations(ptSessionAttendance, ({ on
   }),
 }));
 
-export const oneTimeQrCodesRelations = relations(oneTimeQrCodes, ({ one }) => ({
-  user: one(users, {
-    fields: [oneTimeQrCodes.userId],
-    references: [users.id],
-  }),
-}));
+
 
 export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
   user: one(users, {
@@ -433,6 +544,30 @@ export const registerSchema = insertUserSchema.omit({
   password: z.string().min(6, "Password minimal 6 karakter"),
   confirmPassword: z.string(),
   selfieImage: z.string().min(1, "Foto selfie wajib diambil"),
+  homeBranch: z.string().optional(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Password tidak cocok",
+  path: ["confirmPassword"],
+});
+
+// Admin Register schema (no selfie required, optional phone)
+export const registerAdminSchema = insertUserSchema.omit({
+  role: true,
+  active: true,
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+  profileImageUrl: true,
+  emailVerified: true,
+  verificationCode: true,
+  verificationCodeExpiry: true,
+  permanentQrCode: true,
+}).extend({
+  email: z.string().email("Email tidak valid"),
+  phone: z.string().optional(),
+  password: z.string().min(6, "Password minimal 6 karakter"),
+  confirmPassword: z.string(),
+  homeBranch: z.string().optional(),
+  adminSecretKey: z.string().optional(), // Used for validation but not stored in user
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Password tidak cocok",
   path: ["confirmPassword"],
@@ -479,6 +614,14 @@ export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  lastReplyAt: true,
+  isResolved: true,
+});
+
+export const insertFeedbackReplySchema = createInsertSchema(feedbackReplies).omit({
+  id: true,
+  createdAt: true,
+  readAt: true,
 });
 
 export const insertPersonalTrainerSchema = createInsertSchema(personalTrainers).omit({
@@ -505,10 +648,7 @@ export const insertPtSessionAttendanceSchema = createInsertSchema(ptSessionAtten
   updatedAt: true,
 });
 
-export const insertOneTimeQrCodeSchema = createInsertSchema(oneTimeQrCodes).omit({
-  id: true,
-  createdAt: true,
-});
+
 
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
   id: true,
@@ -587,6 +727,8 @@ export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type Feedback = typeof feedbacks.$inferSelect;
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
+export type FeedbackReply = typeof feedbackReplies.$inferSelect;
+export type InsertFeedbackReply = z.infer<typeof insertFeedbackReplySchema>;
 export type PersonalTrainer = typeof personalTrainers.$inferSelect;
 export type InsertPersonalTrainer = z.infer<typeof insertPersonalTrainerSchema>;
 export type PtBooking = typeof ptBookings.$inferSelect;
@@ -595,8 +737,7 @@ export type PtSessionPackage = typeof ptSessionPackages.$inferSelect;
 export type InsertPtSessionPackage = z.infer<typeof insertPtSessionPackageSchema>;
 export type PtSessionAttendance = typeof ptSessionAttendance.$inferSelect;
 export type InsertPtSessionAttendance = z.infer<typeof insertPtSessionAttendanceSchema>;
-export type OneTimeQrCode = typeof oneTimeQrCodes.$inferSelect;
-export type InsertOneTimeQrCode = z.infer<typeof insertOneTimeQrCodeSchema>;
+
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
 export type Notification = typeof notifications.$inferSelect;

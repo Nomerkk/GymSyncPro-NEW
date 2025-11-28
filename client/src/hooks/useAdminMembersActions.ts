@@ -9,10 +9,12 @@ import { getErrorMessage } from "@/lib/errors";
 
 const invalidate = () => {
   queryClient.invalidateQueries({ queryKey: ["/api/admin/members"] });
+  queryClient.invalidateQueries({ queryKey: ["members"] }); // For useMembers hook
   queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/member/bootstrap"] }); // For member dashboard
 };
 
- 
+
 
 export function useAdminMembersActions() {
   const { toast } = useToast();

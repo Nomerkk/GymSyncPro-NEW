@@ -2,10 +2,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { classBookingsService, type ClassBooking } from "@/services/classBookings";
 import { queryClient } from "@/lib/queryClient";
 
-export function useClassBookings(enabled: boolean) {
+export function useClassBookings(enabled: boolean, branch?: string) {
   return useQuery<ClassBooking[]>({
-    queryKey: ["class-bookings"],
-    queryFn: classBookingsService.listAdmin,
+    queryKey: ["class-bookings", branch],
+    queryFn: () => classBookingsService.listAdmin(branch),
     enabled,
   });
 }

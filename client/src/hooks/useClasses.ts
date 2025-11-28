@@ -3,10 +3,10 @@ import { classesService } from "@/services/classes";
 import type { GymClass } from "@shared/schema.ts";
 import { queryClient } from "@/lib/queryClient";
 
-export function useClasses(enabled: boolean) {
+export function useClasses(enabled: boolean, branch?: string) {
   return useQuery<GymClass[]>({
-    queryKey: ["classes"],
-    queryFn: classesService.listAdmin,
+    queryKey: ["classes", branch],
+    queryFn: () => classesService.listAdmin(branch),
     enabled,
   });
 }

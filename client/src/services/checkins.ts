@@ -24,6 +24,8 @@ export interface CheckinValidationResult {
   message?: string;
   user?: { firstName?: string; lastName?: string; email?: string; profileImageUrl?: string };
   membership?: { endDate: string; plan: { name?: string } } | null;
+  checkIn?: { id: string; branch?: string; status?: string; checkInTime: string };
+  activeBranch?: string;
 }
 
 export interface CheckinApprovePayload {
@@ -46,8 +48,8 @@ export const checkinsService = {
     const res = await httpFetch<CheckinValidationResult>("/api/admin/checkin/validate", { method: "POST", body: { qrCode }, signal: opts?.signal });
     return res.json as CheckinValidationResult;
   },
-  async generateMember(opts?: { signal?: AbortSignal }): Promise<MemberQRData> {
-    const res = await httpFetch<MemberQRData>("/api/checkin/generate", { method: "POST", body: {}, signal: opts?.signal });
+  async getMemberQR(opts?: { signal?: AbortSignal }): Promise<MemberQRData> {
+    const res = await httpFetch<MemberQRData>(`/api/member/qrcode?t=${Date.now()}`, { method: "GET", signal: opts?.signal });
     return res.json as MemberQRData;
   },
 };

@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import { Eye, EyeOff, User, Mail, Phone, Lock, ShieldCheck, ArrowRight, Key } from "lucide-react";
+import { Eye, EyeOff, User, Mail, Phone, Lock, ShieldCheck, ArrowRight, Key, MapPin } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { z } from "zod";
 import { Progress } from "@/components/ui/progress";
 import { getErrorMessage } from "@/types/adminDialogs";
@@ -20,6 +21,7 @@ const registerAdminSchema = z.object({
   username: z.string().min(3, "Username minimal 3 karakter"),
   email: z.string().email("Email tidak valid"),
   phone: z.string().optional(),
+  homeBranch: z.string().min(1, "Cabang gym harus dipilih"),
   password: z.string().min(6, "Password minimal 6 karakter"),
   confirmPassword: z.string().min(6, "Konfirmasi password diperlukan"),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -44,6 +46,7 @@ export default function RegisterAdmin() {
       username: "",
       email: "",
       phone: "",
+      homeBranch: "",
       password: "",
       confirmPassword: "",
       adminSecretKey: "",
@@ -54,7 +57,7 @@ export default function RegisterAdmin() {
 
   const passwordStrength = useMemo(() => {
     if (!password) return { strength: 0, label: "", color: "" };
-    
+
     let strength = 0;
     if (password.length >= 6) strength += 25;
     if (password.length >= 8) strength += 15;
@@ -104,7 +107,7 @@ export default function RegisterAdmin() {
                 Buat akun admin dengan akses khusus
               </CardDescription>
             </CardHeader>
-            
+
             <CardContent className="space-y-6">
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
@@ -262,6 +265,38 @@ export default function RegisterAdmin() {
                     />
                   </div>
 
+                  {/* Branch Selection */}
+                  <FormField
+                    control={form.control}
+                    name="homeBranch"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 dark:text-gray-300 font-medium">Cabang Gym</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-red-500 dark:focus:border-red-400">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-5 w-5 text-gray-400" />
+                                <SelectValue placeholder="Pilih cabang gym" />
+                              </div>
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Cikarang">Cikarang</SelectItem>
+                            <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                            <SelectItem value="Jakarta Pusat">Jakarta Pusat</SelectItem>
+                            <SelectItem value="Jakarta Selatan">Jakarta Selatan</SelectItem>
+                            <SelectItem value="Bekasi">Bekasi</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription className="text-xs">
+                          Admin hanya dapat melihat check-in dari cabang yang dipilih
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   {/* Password Fields */}
                   <FormField
                     control={form.control}
@@ -293,10 +328,9 @@ export default function RegisterAdmin() {
                               <div className="space-y-1">
                                 <div className="flex items-center gap-2">
                                   <Progress value={passwordStrength.strength} className="h-2 flex-1" />
-                                  <span className={`text-xs font-medium ${
-                                    passwordStrength.label === "Kuat" ? "text-green-600" :
+                                  <span className={`text-xs font-medium ${passwordStrength.label === "Kuat" ? "text-green-600" :
                                     passwordStrength.label === "Sedang" ? "text-yellow-600" : "text-red-600"
-                                  }`}>
+                                    }`}>
                                     {passwordStrength.label}
                                   </span>
                                 </div>
@@ -372,8 +406,8 @@ export default function RegisterAdmin() {
 
                   <div className="text-center">
                     <Link href="/login-admin" data-testid="link-login">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         type="button"
                         className="w-full h-11 border-2 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 font-semibold"
                       >

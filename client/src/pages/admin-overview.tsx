@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/layout/page-header";
 import { DashboardStatCard } from "@/components/admin/dashboard-stat-card";
 import { RecentCheckinsList } from "@/components/admin/recent-checkins-list";
-import AdminLayout from "@/components/ui/admin-layout";
 import AdminCheckInModal from "@/components/admin-checkin-modal";
 import { inactivityService } from "@/services/inactivity";
 import { getErrorMessage } from "@/lib/errors";
@@ -16,9 +15,17 @@ import {
   TriangleAlert,
   DollarSign,
   QrCode,
-  Bell
+  Bell,
+  Building2
 } from "lucide-react";
- 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 
 interface AdminDashboardStats {
   totalMembers?: number;
@@ -31,14 +38,30 @@ interface AdminDashboardStats {
   };
 }
 
+interface ExpiringMember {
+  id: string;
+  endDate: string;
+  user: {
+    firstName: string;
+    lastName: string;
+    username: string;
+    profileImageUrl?: string;
+  };
+  plan: {
+    name: string;
+  };
+}
+
 interface AdminDashboardResponse {
   stats?: AdminDashboardStats;
+  expiringMembers?: ExpiringMember[];
 }
 
 interface CheckInRecord {
   id: string;
   checkInTime: string;
   status?: string;
+  branch?: string; // Branch where check-in occurred
   user?: {
     firstName?: string;
     lastName?: string;
@@ -53,22 +76,23 @@ interface CheckInRecord {
 
 export default function AdminOverview() {
   const { toast } = useToast();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, isAdmin } = useAuth();
   const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [branchFilter, setBranchFilter] = useState<string>("all");
+  const isSuperAdmin = user?.role === 'super_admin';
 
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || user?.role !== 'admin')) {
+    if (!isLoading && (!isAuthenticated || !isAdmin)) {
       toast({
         title: "Unauthorized",
         description: "Admin access required. Redirecting...",
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/login";
-      }, 500);
-      return;
+        window.location.href = "/login-admin";
+      }, 1500);
     }
-  }, [isAuthenticated, isLoading, user, toast]);
+  }, [isLoading, isAuthenticated, isAdmin, user?.role, toast]);
 
   const sendReminderMutation = useMutation({
     mutationFn: async () => inactivityService.sendReminders(),
@@ -88,95 +112,163 @@ export default function AdminOverview() {
   });
 
   const { data: dashboardData } = useQuery<AdminDashboardResponse>({
-    queryKey: ["/api/admin/dashboard"],
-    enabled: isAuthenticated && user?.role === 'admin',
+    queryKey: ["/api/admin/dashboard", branchFilter],
+    queryFn: async () => {
+      const url = new URL("/api/admin/dashboard", window.location.origin);
+      if (isSuperAdmin && branchFilter !== "all") {
+        url.searchParams.append("branch", branchFilter);
+      }
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed to fetch dashboard data");
+      return res.json();
+    },
+    enabled: isAuthenticated && isAdmin,
   });
 
-  const { data: recentCheckIns } = useQuery<CheckInRecord[]>({
-    queryKey: ["/api/admin/checkins"],
-    enabled: isAuthenticated && user?.role === 'admin',
-    refetchInterval: 10000,
+  const { data: recentCheckIns, refetch } = useQuery<CheckInRecord[]>({
+    queryKey: ["/api/admin/checkins", branchFilter],
+    queryFn: async () => {
+      const url = new URL("/api/admin/checkins", window.location.origin);
+      if (isSuperAdmin && branchFilter !== "all") {
+        url.searchParams.append("branch", branchFilter);
+      }
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed to fetch checkins");
+      return res.json();
+    },
+    enabled: isAuthenticated && isAdmin,
+    refetchOnMount: 'always',
+    // Removed aggressive 1-second polling to prevent ERR_INSUFFICIENT_RESOURCES
+    // Use manual refetch or websockets for real-time updates instead
   });
+
+  // Log when recent check-ins data changes
+  useEffect(() => {
+    if (recentCheckIns) {
+      console.log("[AdminOverview] Recent check-ins updated:", recentCheckIns.length, "items");
+    }
+  }, [recentCheckIns]);
 
   // Do not block rendering while queries load; rely on cached data.
 
-  if (!user || user.role !== 'admin') {
+  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
     return null;
   }
 
-  const stats = dashboardData?.stats || {};
+  const stats = dashboardData?.stats;
+  const expiringMembers = dashboardData?.expiringMembers || [];
 
   return (
-    <AdminLayout user={user} notificationCount={stats.expiringSoon || 0}>
-      <div className="space-y-6">
-        <PageHeader
-          title="Dashboard"
-          subtitle={"Welcome back! Here's your gym overview"}
-          actions={
-            <div className="flex flex-wrap gap-3">
-              <Button 
-                onClick={() => sendReminderMutation.mutate()}
-                disabled={sendReminderMutation.isPending}
-                variant="outline"
-                data-testid="button-send-reminder"
-              >
-                {sendReminderMutation.isPending ? (
-                  <>
-                    <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Bell className="mr-2" size={16} />
-                    Send Reminder
-                  </>
-                )}
-              </Button>
-              <Button 
-                onClick={() => setShowCheckInModal(true)}
-                className="bg-blue-600 hover:bg-blue-700"
-                data-testid="button-validate-checkin"
-              >
-                <QrCode className="mr-2" size={16} />
-                Scan QR Code
-              </Button>
-            </div>
-          }
+    <div className="space-y-6">
+      <PageHeader
+        title="Dashboard Overview"
+        subtitle="Welcome back, Admin"
+        actions={
+          <div className="flex gap-2 items-center">
+            {isSuperAdmin && (
+              <div className="w-[200px]">
+                <Select value={branchFilter} onValueChange={setBranchFilter}>
+                  <SelectTrigger>
+                    <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
+                    <SelectValue placeholder="Filter Cabang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Cabang</SelectItem>
+                    <SelectItem value="Cikarang">Cikarang</SelectItem>
+                    <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <Button onClick={() => setShowCheckInModal(true)} className="gap-2">
+              <QrCode className="h-4 w-4" />
+              Scan Check-in
+            </Button>
+            <Button variant="outline" onClick={() => sendReminderMutation.mutate()} disabled={sendReminderMutation.isPending} className="gap-2">
+              <Bell className="h-4 w-4" />
+              {sendReminderMutation.isPending ? "Sending..." : "Send Inactivity Reminder"}
+            </Button>
+          </div>
+        }
+      />
+
+      {/* Stats Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <DashboardStatCard
+          label="Total Members"
+          value={stats?.totalMembers || 0}
+          icon={<Users className="h-6 w-6 text-blue-600" />}
         />
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <DashboardStatCard
-            icon={<div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><Users className="w-6 h-6 text-blue-600 dark:text-blue-400" /></div>}
-            label="Total Members"
-            value={<span data-testid="text-total-members">{stats.totalMembers || 0}</span>}
-          />
-          <DashboardStatCard
-            icon={<div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center"><CalendarCheck className="w-6 h-6 text-green-600 dark:text-green-400" /></div>}
-            label="Active Today"
-            value={<span data-testid="text-active-today">{stats.activeToday || 0}</span>}
-          />
-          <DashboardStatCard
-            icon={<div className="w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center"><TriangleAlert className="w-6 h-6 text-orange-600 dark:text-orange-400" /></div>}
-            label="Expiring Soon"
-            value={<span data-testid="text-expiring-soon">{stats.expiringSoon || 0}</span>}
-          />
-          <DashboardStatCard
-            icon={<div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center"><DollarSign className="w-6 h-6 text-purple-600 dark:text-purple-400" /></div>}
-            label="Monthly Revenue"
-            value={<span data-testid="text-monthly-revenue">${stats.revenue?.thisMonth || 0}</span>}
-          />
-        </div>
-
-        {/* Recent Activity */}
-        <RecentCheckinsList
-          items={recentCheckIns}
-          onViewAll={() => {
-            window.location.href = '/admin/checkins';
-          }}
+        <DashboardStatCard
+          label="Active Today"
+          value={stats?.activeToday || 0}
+          icon={<CalendarCheck className="h-6 w-6 text-green-600" />}
+        />
+        <DashboardStatCard
+          label="Expiring Soon"
+          value={stats?.expiringSoon || 0}
+          icon={<TriangleAlert className="h-6 w-6 text-orange-600" />}
+        />
+        <DashboardStatCard
+          label="Monthly Revenue"
+          value={`Rp ${(stats?.revenue?.thisMonth || 0).toLocaleString('id-ID')}`}
+          icon={<DollarSign className="h-6 w-6 text-purple-600" />}
         />
       </div>
-      <AdminCheckInModal open={showCheckInModal} onClose={() => setShowCheckInModal(false)} />
-    </AdminLayout>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Recent Check-ins */}
+        <RecentCheckinsList items={recentCheckIns || []} />
+
+        {/* Expiring Members List */}
+        <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+          <div className="p-6 flex flex-col space-y-1.5">
+            <h3 className="font-semibold leading-none tracking-tight">Expiring Soon</h3>
+            <p className="text-sm text-muted-foreground">Memberships expiring in less than 15 days</p>
+          </div>
+          <div className="p-6 pt-0">
+            <div className="space-y-4">
+              {expiringMembers.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No memberships expiring soon.</p>
+              ) : (
+                expiringMembers.map((member) => {
+                  const daysLeft = Math.ceil((new Date(member.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                  return (
+                    <div key={member.id} className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                          {member.user.firstName?.[0] || member.user.username?.[0] || "M"}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{member.user.firstName} {member.user.lastName}</p>
+                          <p className="text-xs text-muted-foreground">{member.plan.name}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-xs font-bold px-2 py-1 rounded-full ${daysLeft <= 3 ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
+                          {daysLeft} days left
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Exp: {new Date(member.endDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <AdminCheckInModal
+        open={showCheckInModal}
+        onClose={() => setShowCheckInModal(false)}
+        onSuccess={() => {
+          console.log("[AdminOverview] Check-in success, refetching list...");
+          refetch();
+        }}
+      />
+    </div>
   );
 }

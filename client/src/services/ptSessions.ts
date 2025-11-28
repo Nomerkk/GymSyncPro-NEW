@@ -10,7 +10,7 @@ export interface PTSummarySession {
   checkInTime?: string;
   adminConfirmed?: boolean;
   user?: { firstName: string; lastName: string; email: string };
-  trainer?: { name: string; specialization: string };
+  trainer?: { name: string; specialization: string; branch?: string };
   notes?: string;
 }
 
@@ -24,7 +24,7 @@ export interface PTSessionPackage {
   status: string; // active | completed | expired
   purchaseDate?: string;
   user?: { firstName: string; lastName: string; email: string };
-  trainer?: { name: string; specialization: string };
+  trainer?: { name: string; specialization: string; branch?: string };
 }
 
 export const ptSessionsService = {

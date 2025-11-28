@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import AdminLayout from "@/components/ui/admin-layout";
+import { BranchBadge } from "@/components/ui/branch-badge";
+
 import { usePTBookings, usePTBookingActions } from "@/hooks/usePTBookings";
-import { Calendar, Clock, User, Search, CheckCircle, XCircle, Timer } from "lucide-react";
+import { Calendar, Clock, User, Search, CheckCircle, XCircle, Timer, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { getErrorMessage } from "@/types/adminDialogs";
 
@@ -17,12 +18,13 @@ import { getErrorMessage } from "@/types/adminDialogs";
 
 export default function AdminPTBookings() {
   const { toast } = useToast();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, isAdmin, isSuperAdmin } = useAuth();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || user?.role !== 'admin')) {
+    if (!isLoading && (!isAuthenticated || !isAdmin)) {
       toast({
         title: "Unauthorized",
         description: "Admin access required. Redirecting...",
@@ -35,25 +37,26 @@ export default function AdminPTBookings() {
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: bookings } = usePTBookings(isAuthenticated && user?.role === 'admin');
+  const { data: bookings } = usePTBookings(isAuthenticated && isAdmin);
   const { updateStatus } = usePTBookingActions();
 
   // Do not block rendering with loading spinners; show cached or empty data.
 
-  if (!user || user.role !== 'admin') {
+  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
     return null;
   }
 
   const filteredBookings = bookings?.filter((booking) => {
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       booking.user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.trainer.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = statusFilter === "all" || booking.status === statusFilter;
 
-    return matchesSearch && matchesFilter;
+    const matchesStatus = statusFilter === "all" || booking.status === statusFilter;
+    const matchesBranch = branchFilter === "all" || booking.trainer.branch === branchFilter;
+
+    return matchesSearch && matchesStatus && matchesBranch;
   }) || [];
 
   const getStatusIcon = (status: string) => {
@@ -103,7 +106,7 @@ export default function AdminPTBookings() {
   };
 
   return (
-    <AdminLayout user={user}>
+    <>
       <div className="space-y-6">
         <PageHeader
           title={<span data-testid="text-page-title">PT Bookings Management</span>}
@@ -156,7 +159,7 @@ export default function AdminPTBookings() {
           <CardHeader>
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
               <CardTitle>All PT Bookings</CardTitle>
-              <div className="flex gap-4 w-full md:w-auto">
+              <div className="flex gap-4 w-full md:w-auto flex-wrap">
                 <div className="relative flex-1 md:w-64">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -167,6 +170,19 @@ export default function AdminPTBookings() {
                     data-testid="input-search"
                   />
                 </div>
+                {isSuperAdmin && (
+                  <Select value={branchFilter} onValueChange={setBranchFilter}>
+                    <SelectTrigger className="w-[180px]" data-testid="select-branch-filter">
+                      <Filter className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="Filter Cabang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Cabang</SelectItem>
+                      <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                      <SelectItem value="Cikarang">Cikarang</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
                     <SelectValue placeholder="Filter Status" />
@@ -189,6 +205,7 @@ export default function AdminPTBookings() {
                   <TableRow>
                     <TableHead>Member</TableHead>
                     <TableHead>Trainer</TableHead>
+                    <TableHead>Cabang</TableHead>
                     <TableHead>Tanggal & Waktu</TableHead>
                     <TableHead>Durasi</TableHead>
                     <TableHead>Jumlah Sesi</TableHead>
@@ -200,7 +217,7 @@ export default function AdminPTBookings() {
                 <TableBody>
                   {filteredBookings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         Tidak ada booking ditemukan
                       </TableCell>
                     </TableRow>
@@ -223,6 +240,9 @@ export default function AdminPTBookings() {
                             <div className="font-medium" data-testid={`text-trainer-name-${booking.id}`}>{booking.trainer.name}</div>
                             <div className="text-sm text-muted-foreground">{booking.trainer.specialization}</div>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <BranchBadge branch={booking.trainer.branch} />
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -285,6 +305,6 @@ export default function AdminPTBookings() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
+    </>
   );
 }

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAdminMembersActions } from "@/hooks/useAdminMembersActions";
 import { Activity, Mail, MessageCircle, Pencil, Trash2, UserCheck, UserX } from "lucide-react";
@@ -9,6 +8,8 @@ import { format } from "date-fns";
 import AdminEditMemberDialog from "./admin-edit-member-dialog";
 import AdminWhatsappDialog from "./admin-whatsapp-dialog";
 import AdminEmailDialog from "./admin-email-dialog";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { computeMembershipStatus } from "@/utils/member";
 
 export interface MemberWithMembership {
   id: string;
@@ -65,13 +66,6 @@ export default function AdminMemberDetailSheet({ open, onOpenChange, member }: P
     }
   };
 
-  const statusBadge = () => {
-    const status = member?.membership?.status === "active" ? "Active" : member?.membership?.status === "expired" ? "Expired" : (member?.membership?.status || "Unknown");
-    let variant: BadgeProps["variant"] = "outline";
-    if (status === "Active") variant = "default"; else if (status === "Expired") variant = "destructive";
-    return <Badge variant={variant}>{status}</Badge>;
-  };
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-lg w-full">
@@ -88,7 +82,7 @@ export default function AdminMemberDetailSheet({ open, onOpenChange, member }: P
             <div>
               <div className="flex items-center gap-2">
                 <div className="text-lg font-semibold">{name}</div>
-                {statusBadge()}
+                {member && <StatusBadge member={member} />}
               </div>
               <div className="text-sm text-muted-foreground">{member?.email || '-'}</div>
               <div className="text-sm text-muted-foreground">{member?.phone || '-'}</div>
@@ -121,24 +115,24 @@ export default function AdminMemberDetailSheet({ open, onOpenChange, member }: P
           <div className="space-y-2">
             <div className="text-xs text-muted-foreground">Quick Actions</div>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={() => setShowEdit(true)}><Pencil className="mr-2 h-4 w-4"/>Edit Member</Button>
-              <Button variant="outline" disabled={!member?.phone} onClick={() => setShowWa(true)}><MessageCircle className="mr-2 h-4 w-4 text-green-600"/>WhatsApp</Button>
-              <Button variant="outline" disabled={!member?.email} onClick={() => setShowEmail(true)}><Mail className="mr-2 h-4 w-4 text-blue-600"/>Email</Button>
+              <Button variant="secondary" onClick={() => setShowEdit(true)}><Pencil className="mr-2 h-4 w-4" />Edit Member</Button>
+              <Button variant="outline" disabled={!member?.phone} onClick={() => setShowWa(true)}><MessageCircle className="mr-2 h-4 w-4 text-green-600" />WhatsApp</Button>
+              <Button variant="outline" disabled={!member?.email} onClick={() => setShowEmail(true)}><Mail className="mr-2 h-4 w-4 text-blue-600" />Email</Button>
               {member?.active === false ? (
-                <Button variant="outline" onClick={handleActivate} disabled={activateMember.isPending}><UserCheck className="mr-2 h-4 w-4 text-green-600"/>{activateMember.isPending ? 'Mengaktifkan...' : 'Aktifkan Kembali'}</Button>
+                <Button variant="outline" onClick={handleActivate} disabled={activateMember.isPending}><UserCheck className="mr-2 h-4 w-4 text-green-600" />{activateMember.isPending ? 'Mengaktifkan...' : 'Aktifkan Kembali'}</Button>
               ) : (
-                <Button variant="outline" onClick={handleSuspend} disabled={suspendMember.isPending}><UserX className="mr-2 h-4 w-4 text-orange-600"/>{suspendMember.isPending ? 'Memproses...' : 'Cuti'}</Button>
+                <Button variant="outline" onClick={handleSuspend} disabled={suspendMember.isPending}><UserX className="mr-2 h-4 w-4 text-orange-600" />{suspendMember.isPending ? 'Memproses...' : 'Cuti'}</Button>
               )}
               <Button
                 variant="destructive"
-                disabled={member?.membership?.status === 'active' || deleteMember.isPending}
-                title={member?.membership?.status === 'active' ? 'Tidak bisa hapus saat membership masih aktif' : undefined}
+                disabled={(member ? computeMembershipStatus(member) : '') === 'Active' || deleteMember.isPending}
+                title={(member ? computeMembershipStatus(member) : '') === 'Active' ? 'Tidak bisa hapus saat membership masih aktif' : undefined}
                 onClick={handleDelete}
               >
-                <Trash2 className="mr-2 h-4 w-4"/>{deleteMember.isPending ? 'Menghapus...' : 'Delete'}
+                <Trash2 className="mr-2 h-4 w-4" />{deleteMember.isPending ? 'Menghapus...' : 'Delete'}
               </Button>
             </div>
-            {member?.membership?.status === 'active' && (
+            {member && computeMembershipStatus(member) === 'Active' && (
               <p className="text-xs text-muted-foreground">Tidak dapat menghapus member selama membership masih aktif. Nonaktifkan/akhiri membership terlebih dahulu.</p>
             )}
             {member?.active === false && (

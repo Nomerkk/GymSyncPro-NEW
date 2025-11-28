@@ -11,6 +11,7 @@ export interface RegisterPayload {
   confirmPassword?: string;
   adminSecretKey?: string;
   selfieImage?: string;
+  homeBranch?: string;
 }
 export interface ResetPayload { email?: string; password?: string; token?: string; }
 export interface VerificationPayload { email: string; code: string; }

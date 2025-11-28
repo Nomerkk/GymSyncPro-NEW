@@ -129,11 +129,11 @@ export default function Terms() {
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Terima kasih telah memilih Idachi Fitness sebagai partner fitness Anda. 
+                Terima kasih telah memilih Idachi Fitness sebagai partner fitness Anda.
                 Harap baca syarat dan ketentuan berikut dengan seksama sebelum menggunakan layanan kami.
               </p>
               <p className="font-medium text-foreground mt-4">
-                Dengan menggunakan aplikasi dan layanan Idachi Fitness, Anda dianggap telah membaca, 
+                Dengan menggunakan aplikasi dan layanan Idachi Fitness, Anda dianggap telah membaca,
                 memahami, dan menyetujui semua syarat dan ketentuan yang tercantum di bawah ini.
               </p>
             </CardContent>
@@ -178,7 +178,7 @@ export default function Terms() {
               <div className="space-y-1 mt-4">
                 <p className="font-medium">Email: support@idachifitness.com</p>
                 <p className="font-medium">Telepon: +62 812-3456-7890</p>
-                <p className="font-medium">Alamat: Jl. Fitness No. 123, Jakarta</p>
+                <p className="font-medium">Alamat: KARTIKA TOWERS GROGOL Jalan Kyai Tapa No. 101 RT.4 RW/ 16 Tomang, Grogol Pertamburan Lantai 2.A2, B2 - C2 - D2 & No. 12, Grogol, Pertamburan, Kota Jakarta Barat, Daerah Khusus Ibukota Jakarta 11440</p>
               </div>
             </CardContent>
           </Card>

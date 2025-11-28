@@ -4,11 +4,12 @@ import type { MemberWithMembership } from "@/utils/member";
 import { queryClient } from "@/lib/queryClient";
 
 /** Hook for listing members. Handles caching and error propagation. */
-export function useMembers(enabled: boolean) {
-  return useQuery<MemberWithMembership[]>({
-    queryKey: ["members"],
-    queryFn: membersService.list,
+export function useMembers(enabled: boolean, page?: number, limit?: number, search?: string, branch?: string) {
+  return useQuery<{ data: MemberWithMembership[], total: number }>({
+    queryKey: ["members", page, limit, search, branch],
+    queryFn: () => membersService.list(page, limit, search, branch),
     enabled,
+    placeholderData: (previousData) => previousData, // Keep previous data while fetching new page
   });
 }
 

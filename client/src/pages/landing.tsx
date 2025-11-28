@@ -23,17 +23,17 @@ export default function Landing() {
         <div className="text-center mb-8">
           {/* Logo */}
           <div className="flex justify-center mb-6">
-            <img 
-              src={logoPath} 
-              alt="Idachi Fitness Logo" 
+            <img
+              src={logoPath}
+              alt="Idachi Fitness Logo"
               className="w-40 h-40 object-contain"
               data-testid="img-logo"
             />
           </div>
-          
+
           {/* Title */}
           <h1 className="text-3xl font-bold text-yellow-400 mb-2" data-testid="text-title">
-            Idachi Fitness Jakarta
+            Idachi Fitness Jakarta Barat
           </h1>
           <p className="text-gray-300 text-sm" data-testid="text-subtitle">
             Sign in for access member portal
@@ -79,7 +79,7 @@ export default function Landing() {
             />
             <label htmlFor="terms" className="text-xs text-gray-300 leading-tight cursor-pointer">
               By signing in as a member, I confirm that I have read, understood, and agree to the{" "}
-              <span className="text-yellow-400 font-semibold">Idachi Fitness Jakarta Terms and Conditions</span>.
+              <span className="text-yellow-400 font-semibold">Idachi Fitness Jakarta Barat Terms and Conditions</span>.
             </label>
           </div>
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { httpFetch } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -88,12 +89,20 @@ export default function MyBookings() {
 
   // Existing bookings
   const { data: classBookings, isLoading: loadingClasses } = useQuery<ClassBookingWithClass[]>({
-    queryKey: ["/api/class-bookings"],
+    queryKey: ["/api/class-bookings", user?.id],
+    queryFn: async () => {
+      const res = await httpFetch<ClassBookingWithClass[]>("/api/class-bookings");
+      return res.json || [];
+    },
     enabled: isAuthenticated,
   });
 
   const { data: ptBookings, isLoading: loadingPT } = useQuery<PtBookingWithTrainer[]>({
-    queryKey: ["/api/pt-bookings"],
+    queryKey: ["/api/pt-bookings", user?.id],
+    queryFn: async () => {
+      const res = await httpFetch<PtBookingWithTrainer[]>("/api/pt-bookings");
+      return res.json || [];
+    },
     enabled: isAuthenticated,
   });
 
@@ -107,7 +116,11 @@ export default function MyBookings() {
     enabled: isAuthenticated,
   });
   const { data: notifications } = useQuery<Notification[]>({
-    queryKey: ["/api/notifications"],
+    queryKey: ["notifications-scoped", user?.id],
+    queryFn: async () => {
+      const res = await httpFetch<Notification[]>("/api/notifications");
+      return res.json || [];
+    },
     enabled: isAuthenticated,
   });
   const notificationCount = notifications?.filter(n => !n.isRead).length || 0;
@@ -184,7 +197,7 @@ export default function MyBookings() {
                           }}
                           disabled={user?.active === false}
                         >
-                          <AspectRatio ratio={3/4}>
+                          <AspectRatio ratio={3 / 4}>
                             {t.imageUrl ? (
                               <img src={t.imageUrl} alt={t.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                             ) : (
@@ -229,7 +242,7 @@ export default function MyBookings() {
                   <button key={c.id} className="text-left" onClick={() => { if (user?.active === false) { toast({ title: "Akun sedang Cuti", description: "Booking class dinonaktifkan sementara.", variant: "destructive" }); return; } setSelectedClass(c); setOpenClassDetail(true); }} disabled={user?.active === false}>
                     <Card className="overflow-hidden border-border">
                       {c.imageUrl && (
-                        <AspectRatio ratio={3/4}>
+                        <AspectRatio ratio={3 / 4}>
                           <img src={c.imageUrl} alt={c.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                         </AspectRatio>
                       )}
@@ -384,7 +397,7 @@ export default function MyBookings() {
                         <div className="grid gap-1">
                           <span className="text-xs text-muted-foreground">Jumlah sesi</span>
                           <div className="flex items-center gap-2">
-                            {[1,4,8].map((n) => (
+                            {[1, 4, 8].map((n) => (
                               <button
                                 key={n}
                                 type="button"
@@ -420,7 +433,7 @@ export default function MyBookings() {
                 const dt = ptDatetimeByTrainer[selectedTrainer.id] ?? defaultDateTime;
                 const notes = ptNotesByTrainer[selectedTrainer.id] ?? "";
                 return (
-                  <div className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t p-4" style={{paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)'}}>
+                  <div className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
                     <div className="max-w-sm mx-auto flex items-center justify-between gap-3">
                       <div className="text-left">
                         <div className="text-xs text-muted-foreground">Total</div>
@@ -463,7 +476,7 @@ export default function MyBookings() {
           {selectedClass && (
             <div className="space-y-4">
               {selectedClass.imageUrl && (
-                <AspectRatio ratio={3/4}>
+                <AspectRatio ratio={3 / 4}>
                   <img src={selectedClass.imageUrl} alt={selectedClass.name} className="h-full w-full rounded-md object-cover border border-border" loading="lazy" decoding="async" />
                 </AspectRatio>
               )}

@@ -1,201 +1,154 @@
-import { ArrowLeft, Camera, Edit, Mail, Phone, User, Calendar, LogOut } from "lucide-react";
+import { Bell, ChevronRight, FileText, HelpCircle, LogOut, Settings, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
-import { format } from "date-fns";
 import { useAuthActions } from "@/hooks/useAuthActions";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/types/adminDialogs";
+import { useState } from "react";
 
 export default function MyProfile() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-
   const { logout } = useAuthActions();
   const logoutMutation = logout;
+
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   if (!user) {
     return null;
   }
 
-  const profileSections = [
-    {
-      icon: Mail,
-      label: "Email",
-      value: user.email,
-      testId: "profile-email"
-    },
-    {
-      icon: Phone,
-      label: "Phone",
-      value: user.phone || "Belum diatur",
-      testId: "profile-phone"
-    },
+  const menuItems = [
     {
       icon: User,
-      label: "Username",
-      value: user.username,
-      testId: "profile-username"
+      label: "My Profile",
+      onClick: () => { }, // Placeholder for now
     },
     {
-      icon: Calendar,
-      label: "Member Sejak",
-      value: user.createdAt ? format(new Date(user.createdAt), "dd MMM yyyy") : "-",
-      testId: "profile-member-since"
-    }
+      icon: Settings,
+      label: "Settings",
+      onClick: () => { }, // Placeholder
+    },
+    {
+      icon: FileText,
+      label: "Terms & Conditions",
+      onClick: () => { }, // Placeholder
+    },
+    {
+      icon: HelpCircle,
+      label: "Help & Support",
+      onClick: () => { }, // Placeholder
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-[#0b1121] text-white pb-20 font-sans">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-gradient-to-b from-background to-background/95 backdrop-blur-xl border-b border-border">
-        <div className="flex items-center gap-3 p-4">
+      <div className="sticky top-0 z-10 bg-[#0b1121]/95 backdrop-blur-xl pt-2">
+        <div className="text-center py-2">
+          <h2 className="text-[10px] font-bold text-gray-500 tracking-widest uppercase">IDACHI FITNESS JAKARTA</h2>
+        </div>
+        <div className="flex items-center justify-between px-6 pb-4">
+          <h1 className="text-2xl font-bold text-white">Profile</h1>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => navigate("/")}
-            className="rounded-full"
-            data-testid="button-back"
+            className="rounded-full text-gray-400 hover:text-white hover:bg-white/10 -mr-2"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <X className="h-6 w-6" />
           </Button>
-          <h1 className="text-2xl font-bold">My Profile</h1>
         </div>
       </div>
 
-      <div className="p-4 space-y-6">
-        {/* Profile Header Card */}
-        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-neon-purple/5">
-          <CardContent className="p-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="relative">
-                <Avatar className="h-28 w-28 border-4 border-background shadow-xl">
-                  <AvatarImage src={user.profileImageUrl || undefined} alt={`${user.firstName} ${user.lastName}`} />
-                  <AvatarFallback className="bg-primary text-primary-foreground font-bold text-3xl">
-                    {`${user.firstName[0]}${user.lastName[0]}`.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <button
-                  className="absolute bottom-0 right-0 p-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:scale-110 transition-transform"
-                  data-testid="button-change-photo"
-                >
-                  <Camera className="h-4 w-4" />
-                </button>
-              </div>
-              
-              <div>
-                <h2 className="text-2xl font-bold">{`${user.firstName} ${user.lastName}`}</h2>
-                <div className="mt-2 flex items-center gap-2 flex-wrap justify-center">
-                  <div className="inline-flex items-center gap-2 bg-primary/20 px-4 py-1.5 rounded-full">
-                    <div className="w-2 h-2 bg-neon-green rounded-full animate-pulse" />
-                    <span className="text-sm font-semibold text-primary capitalize">
-                      {user.role}
-                    </span>
-                  </div>
-                  {user.active === false && (
-                    <div className="inline-flex items-center gap-2 bg-yellow-500/20 px-4 py-1.5 rounded-full border border-yellow-500/30">
-                      <div className="w-2 h-2 bg-yellow-500 rounded-full" />
-                      <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">
-                        Cuti
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+      <div className="px-6 space-y-6">
+        {/* Profile Card */}
+        <Card className="border-0 bg-[#151f32] shadow-lg rounded-2xl overflow-hidden relative">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16 border-0 bg-[#10B981]">
+                <AvatarImage src={user.profileImageUrl || undefined} alt={`${user.firstName} ${user.lastName}`} />
+                <AvatarFallback className="bg-[#10B981] text-[#0F172A] font-bold text-xl">
+                  {`${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'RG'}
+                </AvatarFallback>
+              </Avatar>
 
-              <Button 
-                variant="outline" 
-                className="w-full max-w-xs mt-4"
-                data-testid="button-edit-profile"
-              >
-                <Edit className="h-4 w-4 mr-2" />
-                Edit Profile
-              </Button>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-bold text-white truncate">
+                  {user.firstName ? `${user.firstName} ${user.lastName}` : user.username}
+                </h2>
+                <p className="text-xs text-gray-400 truncate mt-0.5">{user.email}</p>
+                <p className="text-xs font-bold text-[#10B981] mt-1.5">Member</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Personal Information */}
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold px-2">Informasi Personal</h3>
-          
-          <Card>
-            <CardContent className="p-4 space-y-4">
-              {profileSections.map((section, index) => {
-                const Icon = section.icon;
-                return (
-                  <div key={section.testId}>
-                    <div className="flex items-center gap-3" data-testid={section.testId}>
-                      <div className="p-2 bg-primary/10 rounded-lg">
-                        <Icon className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm text-muted-foreground">{section.label}</p>
-                        <p className="font-medium">{section.value}</p>
-                      </div>
-                    </div>
-                    {index < profileSections.length - 1 && <Separator className="mt-4" />}
+        {/* Push Notifications */}
+        <Card className="border-0 bg-[#151f32] shadow-lg rounded-2xl">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4">
+              <Bell className="h-6 w-6 text-white mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-bold text-white">Push Notifications</h3>
+                <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                  Terima notifikasi langsung di perangkat Anda untuk update penting
+                </p>
+
+                <div className="flex items-center justify-between mt-5">
+                  <div>
+                    <p className="text-sm font-bold text-white">
+                      {notificationsEnabled ? "Aktif" : "Nonaktif"}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      Aktifkan untuk menerima notifikasi penting
+                    </p>
                   </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+                  <Switch
+                    checked={notificationsEnabled}
+                    onCheckedChange={setNotificationsEnabled}
+                    className="data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#2a3850]"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Menu List */}
+        <div className="space-y-3">
+          {menuItems.map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={index}
+                onClick={item.onClick}
+                className="w-full flex items-center justify-between p-0 group"
+              >
+                <div className="flex items-center gap-4 bg-[#151f32] flex-1 p-4 rounded-l-2xl rounded-r-2xl">
+                  <div className="p-2 bg-[#0b1121] rounded-lg text-gray-400 group-hover:text-white transition-colors">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <span className="font-bold text-sm text-white">{item.label}</span>
+                </div>
+                <div className="pl-4 pr-2">
+                  <ChevronRight className="h-5 w-5 text-gray-600" />
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        {/* Account Status: Cuti notice */}
-        {user.active === false && (
-          <Card className="border-yellow-500/20 bg-yellow-500/5">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-yellow-500/20">
-                  <Calendar className="h-5 w-5 text-yellow-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Status Akun: Cuti</p>
-                  <p className="text-sm text-muted-foreground">Selama Cuti, fitur Check-in dan Booking dinonaktifkan. Hubungi admin untuk mengaktifkan kembali akun Anda.</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Email Verification Status */}
-        <Card className={user.emailVerified ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${user.emailVerified ? "bg-green-500/20" : "bg-yellow-500/20"}`}>
-                  <Mail className={`h-5 w-5 ${user.emailVerified ? "text-green-600" : "text-yellow-600"}`} />
-                </div>
-                <div>
-                  <p className="font-medium">Status Email</p>
-                  <p className="text-sm text-muted-foreground">
-                    {user.emailVerified ? "Email terverifikasi ✓" : "Email belum terverifikasi"}
-                  </p>
-                </div>
-              </div>
-              {!user.emailVerified && (
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  data-testid="button-verify-email"
-                >
-                  Verifikasi
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Logout */}
-        <div className="pt-2">
+        {/* Logout Button */}
+        <div className="pt-4">
           <Button
-            variant="destructive"
-            className="w-full h-12 font-semibold"
+            variant="ghost"
+            className="w-full h-12 font-semibold text-red-500 hover:text-red-400 hover:bg-red-500/10"
             onClick={() => logoutMutation.mutate(undefined, {
               onSuccess: () => {
                 toast({ title: "Logout berhasil" });

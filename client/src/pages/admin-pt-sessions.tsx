@@ -6,22 +6,25 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import AdminLayout from "@/components/ui/admin-layout";
+import { BranchBadge } from "@/components/ui/branch-badge";
+
 import { usePTSessionPackages, usePTSessionAttendance, usePTSessionActions } from "@/hooks/usePTSessions";
-import { Dumbbell, CheckCircle, Clock, Search } from "lucide-react";
+import { Dumbbell, CheckCircle, Clock, Search, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { getErrorMessage } from "@/types/adminDialogs";
 
 export default function AdminPTSessions() {
   const { toast } = useToast();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, isAdmin, isSuperAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("packages");
 
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || user?.role !== 'admin')) {
+    if (!isLoading && (!isAuthenticated || !isAdmin)) {
       toast({
         title: "Unauthorized",
         description: "Admin access required. Redirecting...",
@@ -34,54 +37,71 @@ export default function AdminPTSessions() {
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: packages } = usePTSessionPackages(isAuthenticated && user?.role === 'admin');
-  const { data: allSessions } = usePTSessionAttendance(isAuthenticated && user?.role === 'admin');
+  const { data: packages } = usePTSessionPackages(isAuthenticated && isAdmin);
+  const { data: allSessions } = usePTSessionAttendance(isAuthenticated && isAdmin);
   const { confirm } = usePTSessionActions();
 
   // Do not block rendering with spinners; show cached or empty data.
 
-  if (!user || user.role !== 'admin') {
+  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
     return null;
   }
 
   const filteredPackages = packages?.filter((pkg) => {
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       pkg.user?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       pkg.user?.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       pkg.user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       pkg.trainer?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
+    const matchesBranch = branchFilter === "all" || pkg.trainer?.branch === branchFilter;
+    return matchesSearch && matchesBranch;
   }) || [];
 
   const filteredSessions = allSessions?.filter((session) => {
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       session.user?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       session.user?.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       session.trainer?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
+    const matchesBranch = branchFilter === "all" || session.trainer?.branch === branchFilter;
+    return matchesSearch && matchesBranch;
   }) || [];
 
   const pendingSessions = filteredSessions.filter(s => !s.adminConfirmed && s.status === 'completed');
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <PageHeader
           title="Manajemen Sesi PT"
           subtitle="Kelola paket sesi dan konfirmasi kehadiran member"
         />
 
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Cari member atau trainer..."
-            className="pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            data-testid="input-search"
-          />
+        {/* Search and Filter */}
+        <div className="flex gap-4 flex-wrap">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Cari member atau trainer..."
+              className="pl-10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              data-testid="input-search"
+            />
+          </div>
+          {isSuperAdmin && (
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger className="w-[180px]" data-testid="select-branch-filter">
+                <Filter className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Filter Cabang" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Cabang</SelectItem>
+                <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                <SelectItem value="Cikarang">Cikarang</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -113,6 +133,7 @@ export default function AdminPTSessions() {
                         <TableRow>
                           <TableHead>Member</TableHead>
                           <TableHead>Trainer</TableHead>
+                          <TableHead>Cabang</TableHead>
                           <TableHead className="text-center">Total Sesi</TableHead>
                           <TableHead className="text-center">Terpakai</TableHead>
                           <TableHead className="text-center">Sisa</TableHead>
@@ -134,6 +155,9 @@ export default function AdminPTSessions() {
                                 <p className="font-medium">{pkg.trainer?.name}</p>
                                 <p className="text-sm text-muted-foreground">{pkg.trainer?.specialization}</p>
                               </div>
+                            </TableCell>
+                            <TableCell>
+                              <BranchBadge branch={pkg.trainer?.branch} />
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge variant="outline">{pkg.totalSessions}</Badge>
@@ -186,6 +210,7 @@ export default function AdminPTSessions() {
                         <TableRow>
                           <TableHead>Member</TableHead>
                           <TableHead>Trainer</TableHead>
+                          <TableHead>Cabang</TableHead>
                           <TableHead>Sesi</TableHead>
                           <TableHead>Tanggal Sesi</TableHead>
                           <TableHead>Check-in</TableHead>
@@ -203,6 +228,9 @@ export default function AdminPTSessions() {
                               </div>
                             </TableCell>
                             <TableCell>{session.trainer?.name}</TableCell>
+                            <TableCell>
+                              <BranchBadge branch={session.trainer?.branch} />
+                            </TableCell>
                             <TableCell>
                               <Badge variant="outline">#{session.sessionNumber}</Badge>
                             </TableCell>
@@ -225,12 +253,12 @@ export default function AdminPTSessions() {
                               <div className="flex flex-col gap-1">
                                 <Badge variant={
                                   session.status === 'completed' ? 'default' :
-                                  session.status === 'scheduled' ? 'secondary' :
-                                  'destructive'
+                                    session.status === 'scheduled' ? 'secondary' :
+                                      'destructive'
                                 }>
-                                  {session.status === 'completed' ? 'Selesai' : 
-                                   session.status === 'scheduled' ? 'Dijadwalkan' : 
-                                   session.status}
+                                  {session.status === 'completed' ? 'Selesai' :
+                                    session.status === 'scheduled' ? 'Dijadwalkan' :
+                                      session.status}
                                 </Badge>
                                 {session.adminConfirmed && (
                                   <Badge variant="default" className="text-xs">
@@ -284,6 +312,6 @@ export default function AdminPTSessions() {
           </TabsContent>
         </Tabs>
       </div>
-    </AdminLayout>
+    </>
   );
 }

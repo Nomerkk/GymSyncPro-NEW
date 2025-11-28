@@ -1,153 +1,315 @@
-import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import AdminLayout from "@/components/ui/admin-layout";
-import { Star, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BranchBadge } from "@/components/ui/branch-badge";
+import { MessageSquare, Filter, Send, CheckCircle, Loader2, User, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
+import { feedbacksService } from "@/services/feedbacks";
+import { cn } from "@/lib/utils";
+import { httpFetch } from "@/services/api";
 
 interface FeedbackRecord {
   id: string;
-  subject?: string;
+  subject: string;
   message: string;
-  rating?: number;
-  category?: string;
+  status: string;
+  isResolved: boolean;
   createdAt: string;
-  member?: {
-    firstName?: string;
-    lastName?: string;
-    email?: string;
+  lastReplyAt: string;
+  userId: string;
+  user: {
+    firstName: string;
+    lastName: string;
+    email: string;
     profileImageUrl?: string;
+    homeBranch?: string;
   };
 }
 
 export default function AdminFeedback() {
   const { toast } = useToast();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, isAdmin, isSuperAdmin } = useAuth();
+  const queryClient = useQueryClient();
+  const [branchFilter, setBranchFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedFeedback, setSelectedFeedback] = useState<FeedbackRecord | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || user?.role !== 'admin')) {
-      toast({
-        title: "Unauthorized",
-        description: "Admin access required. Redirecting...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/login";
-      }, 500);
-      return;
+    if (!isLoading && (!isAuthenticated || !isAdmin)) {
+      window.location.href = "/login";
     }
-  }, [isAuthenticated, isLoading, user, toast]);
+  }, [isAuthenticated, isLoading, isAdmin]);
 
-  interface AdminDashboardStats { expiringSoon?: number }
-  const { data: dashboardData } = useQuery<{ stats?: AdminDashboardStats }>({
-    queryKey: ["/api/admin/dashboard"],
-    enabled: isAuthenticated && user?.role === 'admin',
+  const { data: feedbacks, isLoading: listLoading } = useQuery<FeedbackRecord[]>({
+    queryKey: ["/api/feedbacks"], // Admin gets all feedbacks from same endpoint if role is admin
+    queryFn: feedbacksService.getAll,
+    enabled: isAuthenticated && isAdmin,
   });
 
-  const { data: feedbacks } = useQuery<FeedbackRecord[]>({
-    queryKey: ["/api/admin/feedbacks"],
-    enabled: isAuthenticated && user?.role === 'admin',
+  const { data: replies, isLoading: repliesLoading } = useQuery({
+    queryKey: ["/api/feedbacks", selectedFeedback?.id, "replies"],
+    queryFn: () => feedbacksService.getReplies(selectedFeedback!.id),
+    enabled: !!selectedFeedback,
   });
 
-  // Do not block rendering with a loading spinner; render with cached data or empty list.
+  const replyMutation = useMutation({
+    mutationFn: (msg: string) => feedbacksService.createReply(selectedFeedback!.id, msg),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/feedbacks", selectedFeedback?.id, "replies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
+      setReplyMessage("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to send reply", variant: "destructive" });
+    },
+  });
 
-  if (!user || user.role !== 'admin') {
-    return null;
-  }
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status, isResolved }: { id: string; status: string; isResolved: boolean }) =>
+      httpFetch(`/api/feedbacks/${id}/status`, {
+        method: "PATCH",
+        body: { status, isResolved }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
+      toast({ title: "Success", description: "Ticket status updated" });
+      if (selectedFeedback) {
+        setSelectedFeedback(prev => prev ? ({ ...prev, status: 'resolved', isResolved: true }) : null);
+      }
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+    },
+  });
 
-  const stats = dashboardData?.stats || {};
-
-  const getCategoryColor = (category?: string) => {
-    switch (category?.toLowerCase()) {
-      case 'facilities': return 'bg-blue-500/10 text-blue-600';
-      case 'service': return 'bg-green-500/10 text-green-600';
-      case 'equipment': return 'bg-orange-500/10 text-orange-600';
-      case 'staff': return 'bg-purple-500/10 text-purple-600';
-      default: return 'bg-gray-500/10 text-gray-600';
+  // Auto-scroll chat
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  };
+  }, [replies, selectedFeedback]);
+
+  if (!user || !isAdmin) return null;
+
+  const filteredFeedbacks = feedbacks?.filter(f => {
+    if (branchFilter !== "all" && f.user?.homeBranch !== branchFilter) return false;
+    if (statusFilter !== "all") {
+      if (statusFilter === "open" && f.isResolved) return false;
+      if (statusFilter === "resolved" && !f.isResolved) return false;
+    }
+    return true;
+  });
 
   return (
-    <AdminLayout user={user} notificationCount={stats.expiringSoon || 0}>
-      <div className="space-y-6">
-        {/* Header */}
+    <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
+      {/* Header */}
+      <div className="flex justify-between items-start flex-shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Member Feedback</h1>
-          <p className="text-muted-foreground mt-1">Review member feedback and ratings</p>
+          <h1 className="text-3xl font-bold text-foreground">Support Tickets</h1>
+          <p className="text-muted-foreground mt-1">Manage member inquiries and feedback</p>
         </div>
+        <div className="flex gap-2">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Filter Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="resolved">Resolved</SelectItem>
+            </SelectContent>
+          </Select>
 
-        {/* Feedback List */}
-        <div className="space-y-4">
-          {!feedbacks || feedbacks.length === 0 ? (
-            <Card>
-              <CardContent className="py-12">
-                <div className="text-center">
-                  <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No feedback yet</p>
-                </div>
-              </CardContent>
-            </Card>
+          {isSuperAdmin && (
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger className="w-[180px]">
+                <Filter className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Filter Branch" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
+                <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                <SelectItem value="Cikarang">Cikarang</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 min-h-0">
+        {/* Ticket List */}
+        <div className="md:col-span-1 overflow-y-auto space-y-3 pr-2">
+          {listLoading ? (
+            <div className="flex justify-center py-10"><Loader2 className="animate-spin" /></div>
+          ) : !filteredFeedbacks?.length ? (
+            <div className="text-center py-10 text-muted-foreground">No tickets found</div>
           ) : (
-            feedbacks.map((feedback) => (
-              <Card key={feedback.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={feedback.member?.profileImageUrl} />
-                        <AvatarFallback>
-                          {`${feedback.member?.firstName?.[0] || ''}${feedback.member?.lastName?.[0] || ''}` || 'U'}
-                        </AvatarFallback>
+            filteredFeedbacks.map((feedback) => (
+              <Card
+                key={feedback.id}
+                className={cn(
+                  "cursor-pointer hover:bg-accent/50 transition-colors",
+                  selectedFeedback?.id === feedback.id ? "border-primary bg-accent/50" : ""
+                )}
+                onClick={() => setSelectedFeedback(feedback)}
+              >
+                <div className="p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={feedback.user?.profileImageUrl} />
+                        <AvatarFallback>{feedback.user?.firstName?.[0]}</AvatarFallback>
                       </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <CardTitle className="text-lg">
-                            {feedback.member?.firstName} {feedback.member?.lastName}
-                          </CardTitle>
-                          {feedback.rating && (
-                            <div className="flex items-center gap-1">
-                              {[...Array(5)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  size={14}
-                                  className={i < feedback.rating! ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {feedback.member?.email}
-                        </p>
+                      <div>
+                        <p className="text-sm font-medium">{feedback.user?.firstName} {feedback.user?.lastName}</p>
+                        <p className="text-[10px] text-muted-foreground">{feedback.user?.homeBranch || 'No Branch'}</p>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      {feedback.category && (
-                        <Badge className={getCategoryColor(feedback.category)}>
-                          {feedback.category}
-                        </Badge>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(feedback.createdAt), 'dd MMM yyyy, HH:mm')}
-                      </p>
-                    </div>
+                    <Badge variant={feedback.isResolved ? "secondary" : "default"} className="text-[10px]">
+                      {feedback.isResolved ? "Resolved" : "Open"}
+                    </Badge>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  {feedback.subject && (
-                    <p className="font-medium text-foreground mb-2">{feedback.subject}</p>
-                  )}
-                  <p className="text-sm text-muted-foreground">{feedback.message}</p>
-                </CardContent>
+                  <div>
+                    <p className="font-medium text-sm truncate">{feedback.subject}</p>
+                    <p className="text-xs text-muted-foreground truncate">{feedback.message}</p>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground text-right">
+                    {format(new Date(feedback.lastReplyAt || feedback.createdAt), "MMM dd, HH:mm")}
+                  </p>
+                </div>
               </Card>
             ))
           )}
         </div>
+
+        {/* Detail View */}
+        <Card className="md:col-span-2 flex flex-col h-full overflow-hidden">
+          {!selectedFeedback ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+              <MessageSquare className="h-12 w-12 mb-4 opacity-20" />
+              <p>Select a ticket to view details</p>
+            </div>
+          ) : (
+            <>
+              <CardHeader className="border-b py-3 bg-muted/30 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle className="text-lg">{selectedFeedback.subject}</CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Ticket #{selectedFeedback.id.slice(0, 8)} • {format(new Date(selectedFeedback.createdAt), "PPP p")}
+                    </p>
+                  </div>
+                  {!selectedFeedback.isResolved && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20"
+                      onClick={() => statusMutation.mutate({ id: selectedFeedback.id, status: 'resolved', isResolved: true })}
+                      disabled={statusMutation.isPending}
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Mark Resolved
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+                {/* Original Message */}
+                <div className="flex gap-3">
+                  <Avatar className="h-8 w-8 border border-border">
+                    <AvatarImage src={selectedFeedback.user?.profileImageUrl} />
+                    <AvatarFallback>{selectedFeedback.user?.firstName?.[0]}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-sm font-medium text-foreground">{selectedFeedback.user?.firstName} {selectedFeedback.user?.lastName}</span>
+                      <span className="text-[10px] text-muted-foreground">{format(new Date(selectedFeedback.createdAt), "HH:mm")}</span>
+                    </div>
+                    <div className="bg-muted text-foreground p-3 rounded-2xl rounded-tl-none text-sm">
+                      {selectedFeedback.message}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Replies */}
+                {repliesLoading ? (
+                  <div className="flex justify-center py-4"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>
+                ) : (
+                  replies?.map((reply: any) => {
+                    const isAdminReply = reply.sender?.role === 'admin' || reply.sender?.role === 'super_admin';
+
+                    return (
+                      <div key={reply.id} className={cn("flex gap-3", isAdminReply ? "flex-row-reverse" : "")}>
+                        <Avatar className="h-8 w-8 border border-border">
+                          <AvatarFallback className={cn("text-xs", isAdminReply ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
+                            {isAdminReply ? "ME" : reply.sender?.firstName?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className={cn("flex-1 space-y-1 max-w-[85%]", isAdminReply ? "items-end flex flex-col" : "")}>
+                          <div className={cn("flex items-baseline gap-2", isAdminReply ? "flex-row-reverse" : "")}>
+                            <span className="text-sm font-medium text-foreground">
+                              {isAdminReply ? "You" : `${reply.sender?.firstName} ${reply.sender?.lastName}`}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">{format(new Date(reply.createdAt), "HH:mm")}</span>
+                          </div>
+                          <div className={cn(
+                            "p-3 rounded-2xl text-sm",
+                            isAdminReply ? "bg-primary text-primary-foreground rounded-tr-none" : "bg-muted text-foreground rounded-tl-none"
+                          )}>
+                            {reply.message}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+
+                {selectedFeedback.isResolved && (
+                  <div className="flex justify-center py-4">
+                    <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 px-3 py-1 rounded-full flex items-center gap-2">
+                      <CheckCircle className="h-3 w-3" /> Ticket Resolved
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Reply Input */}
+              {!selectedFeedback.isResolved && (
+                <div className="p-4 border-t bg-background/50 backdrop-blur-sm">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (replyMessage.trim()) replyMutation.mutate(replyMessage);
+                    }}
+                    className="flex gap-2"
+                  >
+                    <Input
+                      value={replyMessage}
+                      onChange={(e) => setReplyMessage(e.target.value)}
+                      placeholder="Type a reply..."
+                      disabled={replyMutation.isPending}
+                    />
+                    <Button type="submit" size="icon" disabled={!replyMessage.trim() || replyMutation.isPending}>
+                      {replyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </form>
+                </div>
+              )}
+            </>
+          )}
+        </Card>
       </div>
-    </AdminLayout>
+    </div>
   );
 }

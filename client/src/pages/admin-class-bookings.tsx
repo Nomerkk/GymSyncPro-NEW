@@ -7,23 +7,25 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import AdminLayout from "@/components/ui/admin-layout";
+
 import { Calendar, Clock, User, Search, CheckCircle, XCircle, Users, Ban } from "lucide-react";
 import { format } from "date-fns";
 import PageHeader from "@/components/layout/page-header";
 import { useClassBookings, useClassBookingActions } from "@/hooks/useClassBookings";
 import { getErrorMessage } from "@/lib/errors";
+import { BranchBadge } from "@/components/ui/branch-badge";
 
 // ClassBooking type moved to services layer
 
 export default function AdminClassBookings() {
   const { toast } = useToast();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, isAdmin, isSuperAdmin } = useAuth();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || user?.role !== 'admin')) {
+    if (!isLoading && (!isAuthenticated || !isAdmin)) {
       toast({
         title: "Unauthorized",
         description: "Admin access required. Redirecting...",
@@ -36,22 +38,22 @@ export default function AdminClassBookings() {
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: bookings } = useClassBookings(isAuthenticated && user?.role === 'admin');
+  const { data: bookings } = useClassBookings(isAuthenticated && isAdmin, branchFilter !== "all" ? branchFilter : undefined);
   const { updateStatus, cancel } = useClassBookingActions();
 
   // Do not block rendering with loading spinners; use cached or empty data.
 
-  if (!user || user.role !== 'admin') {
+  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
     return null;
   }
 
   const filteredBookings = bookings?.filter((booking) => {
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       booking.user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.gymClass.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesFilter = statusFilter === "all" || booking.status === statusFilter;
 
     return matchesSearch && matchesFilter;
@@ -119,7 +121,7 @@ export default function AdminClassBookings() {
   };
 
   return (
-    <AdminLayout user={user}>
+    <>
       <div className="space-y-6">
         <PageHeader
           title={<span data-testid="text-page-title">Class Bookings Management</span>}
@@ -172,7 +174,7 @@ export default function AdminClassBookings() {
           <CardHeader>
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
               <CardTitle>All Class Bookings</CardTitle>
-              <div className="flex gap-4 w-full md:w-auto">
+              <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
                 <div className="relative flex-1 md:w-64">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -194,6 +196,20 @@ export default function AdminClassBookings() {
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {isSuperAdmin && (
+                  <Select value={branchFilter} onValueChange={setBranchFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter Branch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Branches</SelectItem>
+                      <SelectItem value="Cikarang">Cikarang</SelectItem>
+                      <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                      <SelectItem value="Bandung">Bandung</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -236,6 +252,7 @@ export default function AdminClassBookings() {
                           <div>
                             <div className="font-medium" data-testid={`text-class-name-${booking.id}`}>{booking.gymClass.name}</div>
                             <div className="text-sm text-muted-foreground">{booking.gymClass.schedule}</div>
+                            <BranchBadge branch={booking.gymClass.branch} className="mt-1 text-xs" />
                           </div>
                         </TableCell>
                         <TableCell>
@@ -303,6 +320,6 @@ export default function AdminClassBookings() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
+    </>
   );
 }

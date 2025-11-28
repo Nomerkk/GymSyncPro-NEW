@@ -8,6 +8,7 @@ interface CheckInRecord {
   id: string;
   checkInTime: string;
   status?: string;
+  branch?: string; // Branch where check-in occurred
   user?: {
     firstName?: string;
     lastName?: string;
@@ -61,9 +62,16 @@ export function RecentCheckinsList({
                     <p className="font-medium text-slate-900 dark:text-white">
                       {checkin.user?.firstName} {checkin.user?.lastName}
                     </p>
-                    <span className="text-xs rounded border px-2 py-0.5 text-muted-foreground">
-                      {checkin.membership?.plan?.name || 'No Plan'}
-                    </span>
+                    <div className="flex gap-2 items-center">
+                      <span className="text-xs rounded border px-2 py-0.5 text-muted-foreground">
+                        {checkin.membership?.plan?.name || 'No Plan'}
+                      </span>
+                      {checkin.branch && (
+                        <span className="text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 font-medium">
+                          {checkin.branch}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="text-right">

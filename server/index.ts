@@ -128,7 +128,7 @@ app.use((req, res, next) => {
     const verifKey = Boolean(env.resend.verificationApiKey);
     log(`Resend configured: ${resendConfigured ? 'yes' : 'no'}; default.from=${env.resend.defaultFrom}`);
     log(`Resend streams -> admin.from=${env.resend.adminFrom} ${adminKey ? '(own key)' : ''}; verification.from=${env.resend.verificationFrom} ${verifKey ? '(own key)' : ''}`);
-    
+
     setInterval(async () => {
       try {
         const checkedOutCount = await storage.autoCheckoutExpiredSessions();
@@ -139,9 +139,9 @@ app.use((req, res, next) => {
         console.error("Error in auto-checkout job:", error);
       }
     }, 60000);
-    
+
     log("Auto-checkout job started - runs every 1 minute");
-    
+
     // Inactivity reminder job - runs once every 24 hours
     setInterval(async () => {
       try {
@@ -153,7 +153,7 @@ app.use((req, res, next) => {
         console.error("Error in inactivity reminder job:", error);
       }
     }, 24 * 60 * 60 * 1000); // 24 hours in milliseconds
-    
+
     log("Inactivity reminder job started - runs every 24 hours");
   });
 })();

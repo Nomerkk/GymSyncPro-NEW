@@ -23,7 +23,7 @@ export function useAdminCheckinActions() {
 
 export function useMemberCheckin() {
   const generate = useMutation<MemberQRData, unknown, void>({
-    mutationFn: () => checkinsService.generateMember(),
+    mutationFn: () => checkinsService.getMemberQR(),
   });
   return { generate };
 }

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useQuery } from "@tanstack/react-query";
 import { useAdminMembersActions } from "@/hooks/useAdminMembersActions";
 import type { MembershipPlan } from "@shared/schema.ts";
+import { computeMembershipStatus } from "@/utils/member";
 
 const editMemberSchema = z.object({
   firstName: z.string().min(1, "Nama depan diperlukan"),
@@ -49,9 +50,10 @@ interface AdminEditMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member: Member | null;
+  onSuccess?: () => void;
 }
 
-export default function AdminEditMemberDialog({ open, onOpenChange, member }: AdminEditMemberDialogProps) {
+export default function AdminEditMemberDialog({ open, onOpenChange, member, onSuccess }: AdminEditMemberDialogProps) {
   const { updateMember, assignMembership } = useAdminMembersActions();
   const [activeTab, setActiveTab] = useState("details");
 
@@ -96,7 +98,10 @@ export default function AdminEditMemberDialog({ open, onOpenChange, member }: Ad
   const onSubmitMemberDetails = (data: EditMemberFormData) => {
     if (!member?.id) return;
     updateMember.mutate({ memberId: member.id, data }, {
-      onSuccess: () => onOpenChange(false)
+      onSuccess: () => {
+        onOpenChange(false);
+        if (onSuccess) onSuccess();
+      }
     });
   };
 
@@ -106,6 +111,7 @@ export default function AdminEditMemberDialog({ open, onOpenChange, member }: Ad
       onSuccess: () => {
         membershipForm.reset();
         onOpenChange(false);
+        if (onSuccess) onSuccess();
       }
     });
   };
@@ -260,15 +266,16 @@ export default function AdminEditMemberDialog({ open, onOpenChange, member }: Ad
             </Form>
           </TabsContent>
 
+
           <TabsContent value="membership" className="space-y-4 mt-4">
-            {member?.membership && (
+            {member?.membership && computeMembershipStatus(member as any) !== 'No Membership' && (
               <div className="bg-muted p-4 rounded-lg mb-4">
                 <h4 className="font-semibold mb-2">Membership Saat Ini</h4>
                 <div className="text-sm space-y-1">
                   <p>Paket: <span className="font-medium">{member.membership.plan?.name || 'N/A'}</span></p>
-                  <p>Status: <span className="font-medium">{member.membership.status || 'N/A'}</span></p>
+                  <p>Status: <span className="font-medium capitalize">{computeMembershipStatus(member as any)}</span></p>
                   <p>Berakhir: <span className="font-medium">
-                    {member.membership.endDate 
+                    {member.membership.endDate
                       ? new Date(member.membership.endDate).toLocaleDateString('id-ID')
                       : 'N/A'
                     }

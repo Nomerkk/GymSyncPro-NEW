@@ -1,3 +1,4 @@
+
 import {
   users,
   memberships,
@@ -7,15 +8,17 @@ import {
   checkIns,
   payments,
   feedbacks,
+  feedbackReplies,
   personalTrainers,
   ptBookings,
   ptSessionPackages,
   ptSessionAttendance,
-  oneTimeQrCodes,
+
   passwordResetTokens,
   notifications,
   pushSubscriptions,
   promotions,
+  auditLogs,
   type User,
   type UpsertUser,
   type Membership,
@@ -32,6 +35,8 @@ import {
   type InsertPayment,
   type Feedback,
   type InsertFeedback,
+  type FeedbackReply,
+  type InsertFeedbackReply,
   type PersonalTrainer,
   type InsertPersonalTrainer,
   type PtBooking,
@@ -40,8 +45,7 @@ import {
   type InsertPtSessionPackage,
   type PtSessionAttendance,
   type InsertPtSessionAttendance,
-  type OneTimeQrCode,
-  type InsertOneTimeQrCode,
+
   type PasswordResetToken,
   type InsertPasswordResetToken,
   type Notification,
@@ -50,9 +54,11 @@ import {
   type InsertPushSubscription,
   type Promotion,
   type InsertPromotion,
+  type AuditLog,
+  type InsertAuditLog,
 } from "../shared/schema";
 import { db } from "./database/index";
-import { eq, desc, gte, lte, and, or, count, sum, sql } from "drizzle-orm";
+import { eq, desc, gte, gt, lte, and, or, count, sum, sql, inArray, ilike } from "drizzle-orm";
 import { sendInactivityReminderEmail } from "./email/resend";
 import { randomUUID } from 'crypto';
 
@@ -60,7 +66,7 @@ export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByEmail(email: string | null | undefined): Promise<User | undefined>;
   getUserByEmailOrPhoneOrUsername(identifier: string): Promise<User | undefined>;
   getUserByPermanentQrCode(qrCode: string): Promise<User | undefined>;
   createUser(user: UpsertUser): Promise<User>;
@@ -69,7 +75,7 @@ export interface IStorage {
   deleteUser(id: string): Promise<void>;
   updateUserStripeInfo(userId: string, customerId: string, subscriptionId?: string): Promise<User>;
   ensureUserPermanentQrCode(userId: string): Promise<string>;
-  
+
   // Membership operations
   getMembershipPlans(): Promise<MembershipPlan[]>;
   getAllMembershipPlans(): Promise<MembershipPlan[]>;
@@ -77,23 +83,24 @@ export interface IStorage {
   updateMembershipPlan(id: string, plan: Partial<InsertMembershipPlan>): Promise<MembershipPlan>;
   deleteMembershipPlan(id: string): Promise<void>;
   getUserMembership(userId: string): Promise<(Membership & { plan: MembershipPlan }) | undefined>;
+  getLatestMembership(userId: string): Promise<(Membership & { plan: MembershipPlan }) | undefined>;
   createMembership(membership: InsertMembership): Promise<Membership>;
   updateMembership(id: string, membership: Partial<InsertMembership>): Promise<void>;
   updateMembershipStatus(id: string, status: string): Promise<void>;
   cancelUserMemberships(userId: string): Promise<void>;
-  getExpiringMemberships(days: number): Promise<(Membership & { user: User; plan: MembershipPlan })[]>;
-  
+  getExpiringMemberships(days: number, branch?: string): Promise<(Membership & { user: User; plan: MembershipPlan })[]>;
+
   // Class operations
-  getGymClasses(): Promise<GymClass[]>;
+  getGymClasses(branch?: string): Promise<GymClass[]>;
   createGymClass(gymClass: InsertGymClass): Promise<GymClass>;
   updateGymClass(id: string, gymClass: Partial<InsertGymClass>): Promise<void>;
   deleteGymClass(id: string): Promise<void>;
-  getUserClassBookings(userId: string): Promise<(ClassBooking & { gymClass: GymClass })[]>;
-  getAllClassBookings(): Promise<(ClassBooking & { user: User; gymClass: GymClass })[]>;
+  getUserClassBookings(userId: string, limit?: number): Promise<(ClassBooking & { gymClass: GymClass })[]>;
+  getAllClassBookings(limit?: number, offset?: number, branch?: string): Promise<(ClassBooking & { user: User; gymClass: GymClass })[]>;
   bookClass(booking: InsertClassBooking): Promise<ClassBooking>;
   updateClassBookingStatus(id: string, status: string): Promise<void>;
   cancelClassBooking(id: string): Promise<void>;
-  
+
   // Check-in operations
   getUserCheckIns(userId: string, limit?: number): Promise<CheckIn[]>;
   createCheckIn(checkIn: InsertCheckIn): Promise<CheckIn>;
@@ -101,56 +108,61 @@ export interface IStorage {
   getCurrentCrowdCount(): Promise<number>;
   validateCheckInQR(qrCode: string): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } }) | undefined>;
   validateMemberQrAndCheckIn(qrCode: string): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } }) | undefined>;
-  getRecentCheckIns(limit?: number): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } })[]>;
+  getRecentCheckIns(limit?: number, offset?: number, branch?: string): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } })[]>;
   autoCheckoutExpiredSessions(): Promise<number>;
-  
-  // One-time QR code operations
-  generateOneTimeQrCode(userId: string): Promise<OneTimeQrCode>;
-  validateOneTimeQrCode(qrCode: string): Promise<(OneTimeQrCode & { user: User; membership?: Membership & { plan: MembershipPlan } }) | undefined>;
-  markQrCodeAsUsed(qrCode: string): Promise<void>;
-  cleanupExpiredQrCodes(): Promise<number>;
-  
+  getLatestCheckInTimestamp(userId: string): Promise<Date | null>;
+
+
+
   // Payment operations
-  getUserPayments(userId: string): Promise<Payment[]>;
+  getUserPayments(userId: string, limit?: number): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: string, status: string): Promise<void>;
   updatePaymentStatusByTransactionId(transactionId: string, status: string): Promise<void>;
   getPaymentByOrderId(orderId: string): Promise<Payment | undefined>;
-  
+
   // Admin operations
   getAllUsers(): Promise<User[]>;
-  getUsersWithMemberships(): Promise<(User & { membership?: Membership & { plan: MembershipPlan } })[]>;
-  getRevenueStats(): Promise<{ total: number; thisMonth: number; lastMonth: number }>;
-  getMembershipStats(): Promise<{ total: number; active: number; expiringSoon: number }>;
-  
+  getTotalUsersCount(): Promise<number>;
+  getUsersWithMemberships(limit?: number, offset?: number, search?: string, branch?: string): Promise<{ data: (User & { membership?: Membership & { plan: MembershipPlan } })[], total: number }>;
+  getMembersWithActivity(limit?: number, offset?: number, search?: string, branch?: string): Promise<{ data: (User & { membership?: Membership & { plan: MembershipPlan }, lastCheckIn: Date | null, daysInactive: number | null })[], total: number }>;
+  getRevenueStats(branch?: string): Promise<{ total: number; thisMonth: number; lastMonth: number }>;
+  getMembershipStats(branch?: string): Promise<{ total: number; active: number; expiringSoon: number }>;
+
   // Feedback operations
   createFeedback(feedback: InsertFeedback): Promise<Feedback>;
   getUserFeedbacks(userId: string): Promise<Feedback[]>;
-  getAllFeedbacks(): Promise<(Feedback & { user: User })[]>;
-  updateFeedbackStatus(id: string, status: string, adminResponse?: string): Promise<void>;
-  
+  getAllFeedbacks(limit?: number, offset?: number): Promise<(Feedback & { user: User })[]>;
+  getFeedbackById(id: string): Promise<(Feedback & { user: User }) | undefined>;
+  updateFeedbackStatus(id: string, status: string, isResolved?: boolean): Promise<void>;
+
+  // Feedback Reply operations
+  createFeedbackReply(reply: InsertFeedbackReply): Promise<FeedbackReply>;
+  getFeedbackReplies(feedbackId: string): Promise<(FeedbackReply & { sender: User })[]>;
+
   // Personal Trainer operations
-  getAllTrainers(): Promise<PersonalTrainer[]>;
-  getActiveTrainers(): Promise<PersonalTrainer[]>;
+  getAllTrainers(branch?: string): Promise<PersonalTrainer[]>;
+  getActiveTrainers(branch?: string): Promise<PersonalTrainer[]>;
   getTrainerById(id: string): Promise<PersonalTrainer | undefined>;
   createTrainer(trainer: InsertPersonalTrainer): Promise<PersonalTrainer>;
   updateTrainer(id: string, trainer: Partial<InsertPersonalTrainer>): Promise<void>;
   deleteTrainer(id: string): Promise<void>;
-  
+
   // PT Booking operations
   getUserPtBookings(userId: string): Promise<(PtBooking & { trainer: PersonalTrainer })[]>;
-  getAllPtBookings(): Promise<(PtBooking & { user: User; trainer: PersonalTrainer })[]>;
+  getAllPtBookings(limit?: number, offset?: number, branch?: string): Promise<(PtBooking & { user: User; trainer: PersonalTrainer })[]>;
   getPtBookingById(id: string): Promise<(PtBooking & { user: User; trainer: PersonalTrainer }) | undefined>;
   createPtBooking(booking: InsertPtBooking): Promise<PtBooking>;
   updatePtBookingStatus(id: string, status: string): Promise<void>;
   cancelPtBooking(id: string): Promise<void>;
-  
+
   // PT Session Package operations
   createPtSessionPackage(packageData: InsertPtSessionPackage): Promise<PtSessionPackage>;
   getUserPtSessionPackages(userId: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer })[]>;
   getPtSessionPackageById(id: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer; user: User }) | undefined>;
   updatePtSessionPackage(id: string, packageData: Partial<InsertPtSessionPackage>): Promise<void>;
-  
+  getAllPtSessionPackagesWithUsers(limit?: number, offset?: number, branch?: string): Promise<(PtSessionPackage & { user: User })[]>;
+
   // PT Session Attendance operations
   createPtSessionAttendance(attendanceData: InsertPtSessionAttendance): Promise<PtSessionAttendance>;
   getPackageAttendanceSessions(packageId: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer })[]>;
@@ -158,34 +170,39 @@ export interface IStorage {
   getPtSessionAttendanceById(id: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer; user: User; package: PtSessionPackage }) | undefined>;
   updatePtSessionAttendance(id: string, attendanceData: Partial<InsertPtSessionAttendance>): Promise<void>;
   confirmPtSessionAttendance(id: string, adminId: string): Promise<void>;
-  
+  getAllPtSessionAttendanceWithUsers(limit?: number, offset?: number, branch?: string): Promise<(PtSessionAttendance & { user: User; trainer: PersonalTrainer })[]>;
+
   // Password Reset operations
   createPasswordResetToken(email: string, token: string): Promise<PasswordResetToken>;
   getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
   markTokenAsUsed(token: string): Promise<void>;
   cleanupExpiredResetTokens(): Promise<number>;
   updateUserPassword(email: string, newPassword: string): Promise<void>;
-  
+
   // Email verification operations
   storeVerificationCode(email: string, code: string): Promise<void>;
   verifyEmailCode(email: string, code: string): Promise<boolean>;
-  
+
   // Notification operations
   getUserNotifications(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string, userId: string): Promise<void>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
   deleteNotification(id: string, userId: string): Promise<void>;
-  
+
   // Push Subscription operations
   getUserPushSubscriptions(userId: string): Promise<PushSubscription[]>;
   createPushSubscription(subscription: InsertPushSubscription): Promise<PushSubscription>;
   deletePushSubscription(endpoint: string, userId: string): Promise<void>;
   getAllPushSubscriptions(userId: string): Promise<PushSubscription[]>;
-  
+
   // Inactive member operations
   getInactiveMembers(daysInactive: number): Promise<(User & { membership: Membership & { plan: MembershipPlan } })[]>;
   sendInactivityReminders(daysInactive: number): Promise<number>;
+
+  // QR Code operations
+  validateOneTimeQrCode(qrCode: string): Promise<{ userId: string; status: string; expiresAt: Date; user: User; membership?: Membership } | undefined>;
+  markQrCodeAsUsed(qrCode: string): Promise<void>;
 
   // Promotions operations
   getAllPromotions(): Promise<Promotion[]>;
@@ -193,6 +210,11 @@ export interface IStorage {
   createPromotion(promo: InsertPromotion): Promise<Promotion>;
   updatePromotion(id: string, promo: Partial<InsertPromotion>): Promise<void>;
   deletePromotion(id: string): Promise<void>;
+
+  // Audit Log operations
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(limit?: number, offset?: number, branch?: string, search?: string): Promise<(AuditLog & { user: User })[]>;
+  getAdmins(): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -207,7 +229,8 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
+  async getUserByEmail(email: string | null | undefined): Promise<User | undefined> {
+    if (!email) return undefined;
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
   }
@@ -215,22 +238,22 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmailOrPhoneOrUsername(identifier: string): Promise<User | undefined> {
     // Normalize identifier (trim)
     const normalizedIdentifier = identifier.trim();
-    
+
     // Try to find user by username first
     let user = await this.getUserByUsername(normalizedIdentifier);
     if (user) return user;
-    
+
     // Try to find user by email
     user = await this.getUserByEmail(normalizedIdentifier);
     if (user) return user;
-    
+
     // Try to find user by phone (only if identifier is not empty and phone exists)
     const [userByPhone] = await db
       .select()
       .from(users)
       .where(eq(users.phone, normalizedIdentifier))
       .limit(1);
-    
+
     return userByPhone;
   }
 
@@ -267,6 +290,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteUser(id: string): Promise<void> {
+    // 1. Unlink audit logs (keep history but remove user reference)
+    await db.update(auditLogs).set({ userId: null }).where(eq(auditLogs.userId, id));
+
+    // 2. Delete related records
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, id));
+    await db.delete(notifications).where(eq(notifications.userId, id));
+    await db.delete(ptSessionAttendance).where(eq(ptSessionAttendance.userId, id));
+    await db.delete(ptSessionPackages).where(eq(ptSessionPackages.userId, id));
+    await db.delete(ptBookings).where(eq(ptBookings.userId, id));
+    await db.delete(feedbacks).where(eq(feedbacks.userId, id));
+    await db.delete(payments).where(eq(payments.userId, id));
+    await db.delete(checkIns).where(eq(checkIns.userId, id));
+    await db.delete(classBookings).where(eq(classBookings.userId, id));
+    await db.delete(memberships).where(eq(memberships.userId, id));
+
+    // 3. Finally delete user
     await db.delete(users).where(eq(users.id, id));
   }
 
@@ -293,15 +332,15 @@ export class DatabaseStorage implements IStorage {
     if (!user) {
       throw new Error('User not found');
     }
-    
+
     // If user already has a permanent QR code, return it
     if (user.permanentQrCode) {
       return user.permanentQrCode;
     }
-    
-  // Generate a new permanent QR code
-  const qrCode = randomUUID();
-    
+
+    // Generate a new permanent QR code
+    const qrCode = randomUUID();
+
     // Update user with new permanent QR code
     await db
       .update(users)
@@ -310,7 +349,7 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId));
-    
+
     return qrCode;
   }
 
@@ -359,7 +398,53 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(memberships.userId, userId), eq(memberships.status, "active")))
       .limit(1);
 
-    return result[0];
+    const membership = result[0];
+
+    // Lazy expiration check
+    if (membership && new Date(membership.endDate) < new Date()) {
+      console.log(`[Membership] Auto - expiring membership ${membership.id} for user ${userId}`);
+      await this.updateMembershipStatus(membership.id, 'expired');
+      return undefined;
+    }
+
+    return membership;
+  }
+
+  async getLatestMembership(userId: string): Promise<(Membership & { plan: MembershipPlan }) | undefined> {
+    const result = await db
+      .select({
+        id: memberships.id,
+        userId: memberships.userId,
+        planId: memberships.planId,
+        startDate: memberships.startDate,
+        endDate: memberships.endDate,
+        status: memberships.status,
+        autoRenewal: memberships.autoRenewal,
+        createdAt: memberships.createdAt,
+        plan: membershipPlans,
+      })
+      .from(memberships)
+      .innerJoin(membershipPlans, eq(memberships.planId, membershipPlans.id))
+      .where(eq(memberships.userId, userId))
+      .orderBy(desc(memberships.endDate))
+      .limit(1);
+
+    const membership = result[0];
+
+    if (membership) {
+      const now = new Date();
+      const endDate = new Date(membership.endDate);
+      console.log(`[Membership Check] ID: ${membership.id}, Status: ${membership.status}, EndDate: ${endDate.toISOString()}, Now: ${now.toISOString()}, IsExpired: ${endDate < now}`);
+    }
+
+    // Lazy expiration check for active memberships
+    if (membership && membership.status === 'active' && new Date(membership.endDate) < new Date()) {
+      console.log(`[Membership] Auto - expiring membership ${membership.id} for user ${userId}`);
+      await this.updateMembershipStatus(membership.id, 'expired');
+      membership.status = 'expired'; // Return updated status
+    }
+
+    return membership;
   }
 
   async createMembership(membership: InsertMembership): Promise<Membership> {
@@ -381,11 +466,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(memberships.userId, userId));
   }
 
-  async getExpiringMemberships(days: number): Promise<(Membership & { user: User; plan: MembershipPlan })[]> {
+  async getExpiringMemberships(days: number, branch?: string): Promise<(Membership & { user: User; plan: MembershipPlan })[]> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() + days);
 
-    return await db
+    let query = db
       .select({
         id: memberships.id,
         userId: memberships.userId,
@@ -407,17 +492,30 @@ export class DatabaseStorage implements IStorage {
           lte(memberships.endDate, cutoffDate)
         )
       );
+
+    if (branch) {
+      query = query.where(eq(users.homeBranch, branch));
+    }
+
+    return await query;
   }
 
   // Class operations
-  async getGymClasses(): Promise<GymClass[]> {
+  async getGymClasses(branch?: string): Promise<GymClass[]> {
     try {
-      return await db.select().from(gymClasses).where(eq(gymClasses.active, true));
+      let query = db.select().from(gymClasses).where(eq(gymClasses.active, true));
+
+      if (branch) {
+        query = query.where(eq(gymClasses.branch, branch));
+      }
+
+      return await query;
     } catch (e: any) {
       const msg = String(e?.message || e);
       const missingImageUrl = msg.includes('gym_classes.image_url') || msg.includes('column') && msg.includes('image_url');
       if (!missingImageUrl) throw e;
-      const rows = await db
+
+      let query = db
         .select({
           id: gymClasses.id,
           name: gymClasses.name,
@@ -432,6 +530,12 @@ export class DatabaseStorage implements IStorage {
         })
         .from(gymClasses)
         .where(eq(gymClasses.active, true));
+
+      if (branch) {
+        query = query.where(eq(gymClasses.branch, branch));
+      }
+
+      const rows = await query;
       return rows as unknown as GymClass[];
     }
   }
@@ -466,7 +570,7 @@ export class DatabaseStorage implements IStorage {
     await db.update(gymClasses).set({ active: false }).where(eq(gymClasses.id, id));
   }
 
-  async getUserClassBookings(userId: string): Promise<(ClassBooking & { gymClass: GymClass })[]> {
+  async getUserClassBookings(userId: string, limit?: number): Promise<(ClassBooking & { gymClass: GymClass })[]> {
     try {
       return await db
         .select({
@@ -481,7 +585,8 @@ export class DatabaseStorage implements IStorage {
         .from(classBookings)
         .innerJoin(gymClasses, eq(classBookings.classId, gymClasses.id))
         .where(eq(classBookings.userId, userId))
-        .orderBy(desc(classBookings.bookingDate));
+        .orderBy(desc(classBookings.bookingDate))
+        .limit(limit || 50);
     } catch (e: any) {
       // Fallback for legacy DBs missing gym_classes.image_url column
       const msg = String(e?.message || e);
@@ -512,14 +617,15 @@ export class DatabaseStorage implements IStorage {
         .from(classBookings)
         .innerJoin(gymClasses, eq(classBookings.classId, gymClasses.id))
         .where(eq(classBookings.userId, userId))
-        .orderBy(desc(classBookings.bookingDate));
+        .orderBy(desc(classBookings.bookingDate))
+        .limit(limit || 50);
       return rows as unknown as (ClassBooking & { gymClass: GymClass })[];
     }
   }
 
-  async getAllClassBookings(): Promise<(ClassBooking & { user: User; gymClass: GymClass })[]> {
+  async getAllClassBookings(limit?: number, offset?: number, branch?: string): Promise<(ClassBooking & { user: User; gymClass: GymClass })[]> {
     try {
-      return await db
+      let query = db
         .select({
           id: classBookings.id,
           userId: classBookings.userId,
@@ -534,6 +640,15 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(users, eq(classBookings.userId, users.id))
         .innerJoin(gymClasses, eq(classBookings.classId, gymClasses.id))
         .orderBy(desc(classBookings.bookingDate));
+
+      if (branch) {
+        query = query.where(eq(gymClasses.branch, branch));
+      }
+
+      if (limit) query = query.limit(limit);
+      if (offset) query = query.offset(offset);
+
+      return await query;
     } catch (e: any) {
       const msg = String(e?.message || e);
       const missingImageUrl = msg.includes('gym_classes.image_url') || msg.includes('column') && msg.includes('image_url');
@@ -570,36 +685,36 @@ export class DatabaseStorage implements IStorage {
 
   async bookClass(booking: InsertClassBooking): Promise<ClassBooking> {
     const [newBooking] = await db.insert(classBookings).values(booking).returning();
-    
+
     // Update class enrollment count - get current count first
     const currentBookings = await db
       .select({ count: count() })
       .from(classBookings)
       .where(and(eq(classBookings.classId, booking.classId), eq(classBookings.status, "booked")));
-    
+
     await db
       .update(gymClasses)
       .set({ currentEnrollment: currentBookings[0]?.count || 0 })
       .where(eq(gymClasses.id, booking.classId));
-    
+
     return newBooking;
   }
 
   async updateClassBookingStatus(id: string, status: string): Promise<void> {
     const [booking] = await db.select().from(classBookings).where(eq(classBookings.id, id));
-    
+
     if (!booking) {
       return;
     }
 
     await db.update(classBookings).set({ status }).where(eq(classBookings.id, id));
-    
+
     // Update class enrollment count
     const currentBookings = await db
       .select({ count: count() })
       .from(classBookings)
       .where(and(eq(classBookings.classId, booking.classId), eq(classBookings.status, "booked")));
-    
+
     await db
       .update(gymClasses)
       .set({ currentEnrollment: currentBookings[0]?.count || 0 })
@@ -608,18 +723,18 @@ export class DatabaseStorage implements IStorage {
 
   async cancelClassBooking(id: string): Promise<void> {
     const [booking] = await db.select().from(classBookings).where(eq(classBookings.id, id));
-    
+
     if (!booking || booking.status === 'cancelled') {
       return;
     }
 
     await db.update(classBookings).set({ status: "cancelled" }).where(eq(classBookings.id, id));
-    
+
     const currentBookings = await db
       .select({ count: count() })
       .from(classBookings)
       .where(and(eq(classBookings.classId, booking.classId), eq(classBookings.status, "booked")));
-    
+
     await db
       .update(gymClasses)
       .set({ currentEnrollment: currentBookings[0]?.count || 0 })
@@ -627,6 +742,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Check-in operations
+  async getLatestCheckInTimestamp(userId: string): Promise<Date | null> {
+    const result = await db
+      .select({ checkInTime: checkIns.checkInTime })
+      .from(checkIns)
+      .where(eq(checkIns.userId, userId))
+      .orderBy(desc(checkIns.checkInTime))
+      .limit(1);
+
+    return result.length > 0 ? result[0].checkInTime : null;
+  }
+
   async getUserCheckIns(userId: string, limit = 10): Promise<CheckIn[]> {
     return await db
       .select()
@@ -648,13 +774,33 @@ export class DatabaseStorage implements IStorage {
       .where(eq(checkIns.id, id));
   }
 
+  // Simple in-memory cache for crowd count
+  private crowdCountCache: { count: number; timestamp: number } | null = null;
+  private readonly CROWD_COUNT_TTL = 60 * 1000; // 60 seconds
+
   async getCurrentCrowdCount(): Promise<number> {
-    const result = await db
+    const now = Date.now();
+
+    // Return cached value if valid
+    if (this.crowdCountCache && (now - this.crowdCountCache.timestamp) < this.CROWD_COUNT_TTL) {
+      return this.crowdCountCache.count;
+    }
+
+    // Fetch new value
+    const [result] = await db
       .select({ count: count() })
       .from(checkIns)
       .where(eq(checkIns.status, "active"));
-    
-    return result[0]?.count || 0;
+
+    const countVal = result?.count || 0;
+
+    // Update cache
+    this.crowdCountCache = {
+      count: countVal,
+      timestamp: now
+    };
+
+    return countVal;
   }
 
   async validateCheckInQR(qrCode: string): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } }) | undefined> {
@@ -666,6 +812,7 @@ export class DatabaseStorage implements IStorage {
         checkOutTime: checkIns.checkOutTime,
         qrCode: checkIns.qrCode,
         lockerNumber: checkIns.lockerNumber,
+        branch: checkIns.branch,
         status: checkIns.status,
         createdAt: checkIns.createdAt,
         user: users,
@@ -704,6 +851,7 @@ export class DatabaseStorage implements IStorage {
       checkOutTime: row.checkOutTime,
       qrCode: row.qrCode,
       lockerNumber: row.lockerNumber,
+      branch: row.branch,
       status: row.status,
       createdAt: row.createdAt,
       user: row.user,
@@ -754,13 +902,13 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     let checkIn: CheckIn;
-    
+
     if (existingCheckIn.length > 0) {
       // User already has an active check-in
       checkIn = existingCheckIn[0];
     } else {
-  // Create new check-in
-  const newCheckInQr = randomUUID();
+      // Create new check-in
+      const newCheckInQr = randomUUID();
       const [newCheckIn] = await db
         .insert(checkIns)
         .values({
@@ -782,8 +930,8 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getRecentCheckIns(limit = 20): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } })[]> {
-    const result = await db
+  async getRecentCheckIns(limit = 20, offset = 0, branch?: string): Promise<(CheckIn & { user: User; membership?: Membership & { plan: MembershipPlan } })[]> {
+    let query = db
       .select({
         id: checkIns.id,
         userId: checkIns.userId,
@@ -791,6 +939,7 @@ export class DatabaseStorage implements IStorage {
         checkOutTime: checkIns.checkOutTime,
         qrCode: checkIns.qrCode,
         lockerNumber: checkIns.lockerNumber,
+        branch: checkIns.branch,
         status: checkIns.status,
         createdAt: checkIns.createdAt,
         user: users,
@@ -816,16 +965,22 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(checkIns.userId, users.id))
       .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, "active")))
       .leftJoin(membershipPlans, eq(memberships.planId, membershipPlans.id))
-      .orderBy(desc(checkIns.checkInTime))
-      .limit(limit);
+      .orderBy(desc(checkIns.checkInTime));
 
-  return result.map((row: any) => ({
+    if (branch) {
+      query = query.where(eq(checkIns.branch, branch));
+    }
+
+    const result = await query.limit(limit).offset(offset);
+
+    return result.map((row: any) => ({
       id: row.id,
       userId: row.userId,
       checkInTime: row.checkInTime,
       checkOutTime: row.checkOutTime,
       qrCode: row.qrCode,
-    lockerNumber: row.lockerNumber,
+      lockerNumber: row.lockerNumber,
+      branch: row.branch,
       status: row.status,
       createdAt: row.createdAt,
       user: row.user,
@@ -874,24 +1029,25 @@ export class DatabaseStorage implements IStorage {
     for (const checkIn of expiredCheckIns) {
       await db
         .update(checkIns)
-        .set({ 
-          checkOutTime: new Date(), 
-          status: "completed" 
+        .set({
+          checkOutTime: new Date(),
+          status: "completed"
         })
         .where(eq(checkIns.id, checkIn.id));
     }
 
-    console.log(`Auto-checkout: ${expiredCheckIns.length} member(s) checked out automatically after 3 hours`);
+    console.log(`Auto - checkout: ${expiredCheckIns.length} member(s) checked out automatically after 3 hours`);
     return expiredCheckIns.length;
   }
 
   // Payment operations
-  async getUserPayments(userId: string): Promise<Payment[]> {
+  async getUserPayments(userId: string, limit?: number): Promise<Payment[]> {
     return await db
       .select()
       .from(payments)
       .where(eq(payments.userId, userId))
-      .orderBy(desc(payments.createdAt));
+      .orderBy(desc(payments.createdAt))
+      .limit(limit || 50);
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {
@@ -922,31 +1078,78 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users);
   }
 
-  async getUsersWithMemberships(): Promise<(User & { membership?: Membership & { plan: MembershipPlan } })[]> {
-    const result = await db
+  async getTotalUsersCount(): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(users);
+    return result?.count || 0;
+  }
+
+  async getUsersWithMemberships(limit?: number, offset?: number, search?: string, branch?: string): Promise<{ data: (User & { membership?: Membership & { plan: MembershipPlan } })[], total: number }> {
+    console.log('[getUsersWithMemberships] Called with:', { limit, offset, search, branch });
+
+    const conditions = [];
+
+    // NOTE: Members don't have homeBranch - that's only for admins
+    // We're NOT filtering by branch here because members can use any branch
+    // Branch filtering should only apply to admin access control, not member data
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      conditions.push(
+        or(
+          sql`lower(${users.firstName}) LIKE ${`%${searchLower}%`} `,
+          sql`lower(${users.lastName}) LIKE ${`%${searchLower}%`} `,
+          sql`lower(${users.email}) LIKE ${`%${searchLower}%`} `,
+          sql`lower(${users.username}) LIKE ${`%${searchLower}%`} `
+        )
+      );
+    }
+
+    // Get total count
+    let total = 0;
+    if (conditions.length > 0) {
+      const [countResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(and(...conditions));
+      total = countResult?.count || 0;
+    } else {
+      total = await this.getTotalUsersCount();
+    }
+
+    console.log('[getUsersWithMemberships] Total members found:', total);
+
+    // Get users
+    let userQuery = db.select().from(users);
+    if (conditions.length > 0) {
+      userQuery = userQuery.where(and(...conditions)) as any;
+    }
+    if (limit) {
+      userQuery = userQuery.limit(limit) as any;
+    }
+    if (offset) {
+      userQuery = userQuery.offset(offset) as any;
+    }
+
+    const usersList = await userQuery;
+    console.log('[getUsersWithMemberships] Users fetched:', usersList.length);
+
+    if (usersList.length === 0) {
+      return { data: [], total };
+    }
+
+    const userIds = usersList.map((u: any) => u.id);
+
+    // Get active memberships for these users with plans
+    const activeMemberships = await db
       .select({
-        id: users.id,
-        username: users.username,
-        email: users.email,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        phone: users.phone,
-        profileImageUrl: users.profileImageUrl,
-        role: users.role,
-        active: users.active,
-        stripeCustomerId: users.stripeCustomerId,
-        stripeSubscriptionId: users.stripeSubscriptionId,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-        membershipId: memberships.id,
-        membershipUserId: memberships.userId,
-        membershipPlanId: memberships.planId,
-        membershipStartDate: memberships.startDate,
-        membershipEndDate: memberships.endDate,
-        membershipStatus: memberships.status,
-        membershipAutoRenewal: memberships.autoRenewal,
-        membershipCreatedAt: memberships.createdAt,
-        planId: membershipPlans.id,
+        id: memberships.id,
+        userId: memberships.userId,
+        planId: memberships.planId,
+        startDate: memberships.startDate,
+        endDate: memberships.endDate,
+        status: memberships.status,
+        autoRenewal: memberships.autoRenewal,
+        createdAt: memberships.createdAt,
         planName: membershipPlans.name,
         planDescription: membershipPlans.description,
         planPrice: membershipPlans.price,
@@ -956,84 +1159,158 @@ export class DatabaseStorage implements IStorage {
         planActive: membershipPlans.active,
         planCreatedAt: membershipPlans.createdAt,
       })
-      .from(users)
-      .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, "active")))
-      .leftJoin(membershipPlans, eq(memberships.planId, membershipPlans.id));
+      .from(memberships)
+      .innerJoin(membershipPlans, eq(memberships.planId, membershipPlans.id))
+      .where(
+        and(
+          inArray(memberships.userId, userIds),
+          eq(memberships.status, 'active'),
+          sql`${memberships.endDate} > NOW()`
+        )
+      )
+      .orderBy(desc(memberships.createdAt));
 
-  return result.map((row: any) => ({
-      id: row.id,
-      username: row.username,
-      password: '', // Never expose password hashes
-      email: row.email,
-      firstName: row.firstName,
-      lastName: row.lastName,
-      phone: row.phone,
-      profileImageUrl: row.profileImageUrl,
-      permanentQrCode: null,
-      emailVerified: false,
-      verificationCode: null,
-      verificationCodeExpiry: null,
-      role: row.role,
-      active: row.active,
-      stripeCustomerId: row.stripeCustomerId,
-      stripeSubscriptionId: row.stripeSubscriptionId,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      membership: row.membershipId ? {
-        id: row.membershipId,
-        userId: row.membershipUserId!,
-        planId: row.membershipPlanId!,
-        startDate: row.membershipStartDate!,
-        endDate: row.membershipEndDate!,
-        status: row.membershipStatus!,
-        autoRenewal: row.membershipAutoRenewal!,
-        createdAt: row.membershipCreatedAt!,
-        plan: {
-          id: row.planId!,
-          name: row.planName!,
-          description: row.planDescription,
-          price: row.planPrice!,
-          durationMonths: row.planDurationMonths!,
-          features: row.planFeatures,
-          stripePriceId: row.planStripePriceId,
-          active: row.planActive!,
-          createdAt: row.planCreatedAt!,
-        }
-      } : undefined
-    }));
+    console.log('[getUsersWithMemberships] Active memberships found:', activeMemberships.length);
+
+    // Create a map of userId -> latest membership
+    const membershipMap = new Map<string, any>();
+    for (const m of activeMemberships) {
+      if (!membershipMap.has(m.userId)) {
+        membershipMap.set(m.userId, m);
+      }
+    }
+
+    // Merge users with their memberships
+    const data = usersList.map((user: any) => {
+      const membershipData = membershipMap.get(user.id);
+
+      return {
+        id: user.id,
+        username: user.username,
+        password: '', // Never expose password
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        profileImageUrl: user.profileImageUrl,
+        permanentQrCode: user.permanentQrCode,
+        role: user.role,
+        homeBranch: user.homeBranch,
+        active: user.active,
+        emailVerified: user.emailVerified,
+        verificationCode: user.verificationCode,
+        verificationCodeExpiry: user.verificationCodeExpiry,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        membership: membershipData ? {
+          id: membershipData.id,
+          userId: membershipData.userId,
+          planId: membershipData.planId,
+          startDate: membershipData.startDate,
+          endDate: membershipData.endDate,
+          status: membershipData.status,
+          autoRenewal: membershipData.autoRenewal,
+          createdAt: membershipData.createdAt,
+          plan: {
+            id: membershipData.planId,
+            name: membershipData.planName,
+            description: membershipData.planDescription,
+            price: membershipData.planPrice,
+            durationMonths: membershipData.planDurationMonths,
+            features: membershipData.planFeatures,
+            stripePriceId: membershipData.planStripePriceId,
+            active: membershipData.planActive,
+            createdAt: membershipData.planCreatedAt,
+          }
+        } : undefined
+      };
+    });
+
+    console.log('[getUsersWithMemberships] Returning data count:', data.length);
+    return { data, total };
   }
 
-  async getRevenueStats(): Promise<{ total: number; thisMonth: number; lastMonth: number }> {
+  async getMembersWithActivity(limit?: number, offset?: number, search?: string, branch?: string): Promise<{ data: (User & { membership?: Membership & { plan: MembershipPlan }, lastCheckIn: Date | null, daysInactive: number | null })[], total: number }> {
+    // 1. Get users with memberships (paginated & filtered)
+    const { data: members, total } = await this.getUsersWithMemberships(limit, offset, search, branch);
+
+    if (members.length === 0) {
+      return { data: [], total: 0 };
+    }
+
+    const memberIds = members.map(m => m.id);
+
+    // 2. Get latest check-ins for these users in a single query
+    // Using distinctOn to get the latest check-in per user
+    const latestCheckIns = await db
+      .selectDistinctOn([checkIns.userId])
+      .from(checkIns)
+      .where(inArray(checkIns.userId, memberIds))
+      .orderBy(checkIns.userId, desc(checkIns.checkInTime));
+
+    // 3. Create a map for quick lookup
+    // 3. Create a map for quick lookup
+    const checkInMap = new Map<string, CheckIn>(latestCheckIns.map((c: any) => [c.userId, c]));
+
+    // 4. Merge data
+    const membersWithActivity = members.map(member => {
+      const lastCheckIn = checkInMap.get(member.id);
+      let daysInactive = null;
+
+      if (lastCheckIn?.checkInTime) {
+        const now = new Date();
+        const lastCheckInDate = new Date(lastCheckIn.checkInTime);
+        const diffTime = now.getTime() - lastCheckInDate.getTime();
+        daysInactive = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      }
+
+      return {
+        ...member,
+        lastCheckIn: lastCheckIn?.checkInTime || null,
+        daysInactive
+      };
+    });
+
+    return { data: membersWithActivity, total };
+  }
+
+  async getRevenueStats(branch?: string): Promise<{ total: number; thisMonth: number; lastMonth: number }> {
     const now = new Date();
     const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    const [totalResult] = await db
-      .select({ total: sum(payments.amount) })
-      .from(payments)
-      .where(eq(payments.status, "completed"));
+    // Build base query with branch filter if provided
+    const buildQuery = (additionalConditions: any[] = []) => {
+      let query = db
+        .select({ total: sum(payments.amount) })
+        .from(payments);
 
-    const [thisMonthResult] = await db
-      .select({ total: sum(payments.amount) })
-      .from(payments)
-      .where(
-        and(
-          eq(payments.status, "completed"),
-          gte(payments.createdAt, firstDayThisMonth)
-        )
-      );
+      if (branch) {
+        query = query
+          .innerJoin(users, eq(payments.userId, users.id))
+          .where(and(eq(users.homeBranch, branch), ...additionalConditions));
+      } else if (additionalConditions.length > 0) {
+        query = query.where(and(...additionalConditions));
+      }
 
-    const [lastMonthResult] = await db
-      .select({ total: sum(payments.amount) })
-      .from(payments)
-      .where(
-        and(
-          eq(payments.status, "completed"),
-          gte(payments.createdAt, firstDayLastMonth),
-          lte(payments.createdAt, lastDayLastMonth)
-        )
-      );
+      return query;
+    };
+
+    const [totalResult] = await buildQuery([eq(payments.status, "completed")]);
+
+    const [thisMonthResult] = await buildQuery([
+      eq(payments.status, "completed"),
+      gte(payments.createdAt, firstDayThisMonth)
+    ]);
+
+    const [lastMonthResult] = await buildQuery([
+      eq(payments.status, "completed"),
+      gte(payments.createdAt, firstDayLastMonth),
+      lte(payments.createdAt, lastDayLastMonth)
+    ]);
 
     return {
       total: Number(totalResult?.total || 0),
@@ -1042,26 +1319,44 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getMembershipStats(): Promise<{ total: number; active: number; expiringSoon: number }> {
-    const [totalResult] = await db.select({ count: count() }).from(memberships);
-    
-    const [activeResult] = await db
-      .select({ count: count() })
-      .from(memberships)
-      .where(eq(memberships.status, "active"));
+  async getMembershipStats(branch?: string): Promise<{ total: number; active: number; expiringSoon: number }> {
+    const branchCondition = branch ? eq(users.homeBranch, branch) : undefined;
+
+    const [totalResult] = branch
+      ? await db
+        .select({ count: count() })
+        .from(memberships)
+        .innerJoin(users, eq(memberships.userId, users.id))
+        .where(branchCondition!)
+      : await db.select({ count: count() }).from(memberships);
+
+    const [activeResult] = branch
+      ? await db
+        .select({ count: count() })
+        .from(memberships)
+        .innerJoin(users, eq(memberships.userId, users.id))
+        .where(and(eq(memberships.status, "active"), branchCondition!))
+      : await db
+        .select({ count: count() })
+        .from(memberships)
+        .where(eq(memberships.status, "active"));
 
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() + 20);
+    cutoffDate.setDate(cutoffDate.getDate() + 15);
+
+    const conditions = [
+      eq(memberships.status, "active"),
+      lte(memberships.endDate, cutoffDate)
+    ];
+    if (branch) {
+      conditions.push(branchCondition!);
+    }
 
     const [expiringSoonResult] = await db
       .select({ count: count() })
       .from(memberships)
-      .where(
-        and(
-          eq(memberships.status, "active"),
-          lte(memberships.endDate, cutoffDate)
-        )
-      );
+      .innerJoin(users, eq(memberships.userId, users.id))
+      .where(and(...conditions));
 
     return {
       total: totalResult?.count || 0,
@@ -1071,17 +1366,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Feedback operations
-  async createFeedback(feedbackData: InsertFeedback): Promise<Feedback> {
-    const [feedback] = await db.insert(feedbacks).values(feedbackData).returning();
-    return feedback;
+  async createFeedback(feedback: InsertFeedback): Promise<Feedback> {
+    const [newFeedback] = await db.insert(feedbacks).values(feedback).returning();
+    return newFeedback;
   }
 
   async getUserFeedbacks(userId: string): Promise<Feedback[]> {
-    return await db.select().from(feedbacks).where(eq(feedbacks.userId, userId)).orderBy(desc(feedbacks.createdAt));
+    return await db
+      .select()
+      .from(feedbacks)
+      .where(eq(feedbacks.userId, userId))
+      .orderBy(desc(feedbacks.lastReplyAt));
   }
 
-  async getAllFeedbacks(): Promise<(Feedback & { user: User })[]> {
-    const result = await db
+  async getAllFeedbacks(limit?: number, offset?: number): Promise<(Feedback & { user: User })[]> {
+    const query = db
       .select({
         id: feedbacks.id,
         userId: feedbacks.userId,
@@ -1089,47 +1388,104 @@ export class DatabaseStorage implements IStorage {
         message: feedbacks.message,
         rating: feedbacks.rating,
         status: feedbacks.status,
+        isResolved: feedbacks.isResolved,
+        lastReplyAt: feedbacks.lastReplyAt,
         adminResponse: feedbacks.adminResponse,
         createdAt: feedbacks.createdAt,
         updatedAt: feedbacks.updatedAt,
         user: users,
       })
       .from(feedbacks)
-      .leftJoin(users, eq(feedbacks.userId, users.id))
-      .orderBy(desc(feedbacks.createdAt));
+      .innerJoin(users, eq(feedbacks.userId, users.id))
+      .orderBy(desc(feedbacks.lastReplyAt));
 
-  return result.map((row: any) => ({
-      id: row.id,
-      userId: row.userId,
-      subject: row.subject,
-      message: row.message,
-      rating: row.rating,
-      status: row.status,
-      adminResponse: row.adminResponse,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      user: row.user!,
-    }));
+    if (limit) query.limit(limit);
+    if (offset) query.offset(offset);
+
+    return await query;
   }
 
-  async updateFeedbackStatus(id: string, status: string, adminResponse?: string): Promise<void> {
-    await db
-      .update(feedbacks)
-      .set({
-        status,
-        adminResponse,
-        updatedAt: new Date(),
+  async getFeedbackById(id: string): Promise<(Feedback & { user: User }) | undefined> {
+    const [result] = await db
+      .select({
+        id: feedbacks.id,
+        userId: feedbacks.userId,
+        subject: feedbacks.subject,
+        message: feedbacks.message,
+        rating: feedbacks.rating,
+        status: feedbacks.status,
+        isResolved: feedbacks.isResolved,
+        lastReplyAt: feedbacks.lastReplyAt,
+        adminResponse: feedbacks.adminResponse,
+        createdAt: feedbacks.createdAt,
+        updatedAt: feedbacks.updatedAt,
+        user: users,
       })
+      .from(feedbacks)
+      .innerJoin(users, eq(feedbacks.userId, users.id))
       .where(eq(feedbacks.id, id));
+
+    return result;
+  }
+
+  async updateFeedbackStatus(id: string, status: string, isResolved?: boolean): Promise<void> {
+    const updateData: any = { status, updatedAt: new Date() };
+    if (isResolved !== undefined) {
+      updateData.isResolved = isResolved;
+    }
+    await db.update(feedbacks).set(updateData).where(eq(feedbacks.id, id));
+  }
+
+  // Feedback Reply operations
+  async createFeedbackReply(reply: InsertFeedbackReply): Promise<FeedbackReply> {
+    const [newReply] = await db.insert(feedbackReplies).values(reply).returning();
+
+    // Update feedback lastReplyAt
+    await db.update(feedbacks)
+      .set({ lastReplyAt: new Date(), updatedAt: new Date() })
+      .where(eq(feedbacks.id, reply.feedbackId));
+
+    return newReply;
+  }
+
+  async getFeedbackReplies(feedbackId: string): Promise<(FeedbackReply & { sender: User })[]> {
+    return await db
+      .select({
+        id: feedbackReplies.id,
+        feedbackId: feedbackReplies.feedbackId,
+        senderId: feedbackReplies.senderId,
+        message: feedbackReplies.message,
+        readAt: feedbackReplies.readAt,
+        createdAt: feedbackReplies.createdAt,
+        sender: users,
+      })
+      .from(feedbackReplies)
+      .innerJoin(users, eq(feedbackReplies.senderId, users.id))
+      .where(eq(feedbackReplies.feedbackId, feedbackId))
+      .orderBy(feedbackReplies.createdAt);
   }
 
   // Personal Trainer operations
-  async getAllTrainers(): Promise<PersonalTrainer[]> {
-    return await db.select().from(personalTrainers).orderBy(desc(personalTrainers.createdAt));
+  async getAllTrainers(branch?: string): Promise<PersonalTrainer[]> {
+    let query = db.select().from(personalTrainers).orderBy(desc(personalTrainers.createdAt));
+
+    if (branch) {
+      // @ts-ignore - branch column exists in schema but might not be in types yet if not regenerated
+      query = query.where(eq(personalTrainers.branch, branch));
+    }
+
+    return await query;
   }
 
-  async getActiveTrainers(): Promise<PersonalTrainer[]> {
-    return await db.select().from(personalTrainers).where(eq(personalTrainers.active, true)).orderBy(desc(personalTrainers.createdAt));
+  async getActiveTrainers(branch?: string): Promise<PersonalTrainer[]> {
+    let query = db.select().from(personalTrainers).where(eq(personalTrainers.active, true)).orderBy(desc(personalTrainers.createdAt));
+
+    if (branch) {
+      // @ts-ignore
+      query = query.where(and(eq(personalTrainers.active, true), eq(personalTrainers.branch, branch)));
+    }
+
+    return await query;
   }
 
   async getTrainerById(id: string): Promise<PersonalTrainer | undefined> {
@@ -1158,18 +1514,9 @@ export class DatabaseStorage implements IStorage {
 
   // PT Booking operations
   async getUserPtBookings(userId: string): Promise<(PtBooking & { trainer: PersonalTrainer })[]> {
-    const result = await db
+    const rows = await db
       .select({
-        id: ptBookings.id,
-        userId: ptBookings.userId,
-        trainerId: ptBookings.trainerId,
-        bookingDate: ptBookings.bookingDate,
-        duration: ptBookings.duration,
-        sessionCount: ptBookings.sessionCount,
-        status: ptBookings.status,
-        notes: ptBookings.notes,
-        createdAt: ptBookings.createdAt,
-        updatedAt: ptBookings.updatedAt,
+        booking: ptBookings,
         trainer: personalTrainers,
       })
       .from(ptBookings)
@@ -1177,34 +1524,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ptBookings.userId, userId))
       .orderBy(desc(ptBookings.bookingDate));
 
-  return result.map((row: any) => ({
-      id: row.id,
-      userId: row.userId,
-      trainerId: row.trainerId,
-      bookingDate: row.bookingDate,
-      duration: row.duration,
-      sessionCount: row.sessionCount,
-      status: row.status,
-      notes: row.notes,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      trainer: row.trainer,
+    return rows.map(({ booking, trainer }: { booking: PtBooking; trainer: PersonalTrainer }) => ({
+      ...booking,
+      trainer,
     }));
   }
 
-  async getAllPtBookings(): Promise<(PtBooking & { user: User; trainer: PersonalTrainer })[]> {
-    const result = await db
+  async getAllPtBookings(limit?: number, offset?: number, branch?: string): Promise<(PtBooking & { user: User; trainer: PersonalTrainer })[]> {
+    let query = db
       .select({
-        id: ptBookings.id,
-        userId: ptBookings.userId,
-        trainerId: ptBookings.trainerId,
-        bookingDate: ptBookings.bookingDate,
-        duration: ptBookings.duration,
-        sessionCount: ptBookings.sessionCount,
-        status: ptBookings.status,
-        notes: ptBookings.notes,
-        createdAt: ptBookings.createdAt,
-        updatedAt: ptBookings.updatedAt,
+        booking: ptBookings,
         user: users,
         trainer: personalTrainers,
       })
@@ -1213,35 +1542,79 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(personalTrainers, eq(ptBookings.trainerId, personalTrainers.id))
       .orderBy(desc(ptBookings.bookingDate));
 
-  return result.map((row: any) => ({
-      id: row.id,
-      userId: row.userId,
-      trainerId: row.trainerId,
-      bookingDate: row.bookingDate,
-      duration: row.duration,
-      sessionCount: row.sessionCount,
-      status: row.status,
-      notes: row.notes,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      user: row.user,
-      trainer: row.trainer,
+    if (branch) {
+      query = query.where(eq(users.homeBranch, branch));
+    }
+
+    if (limit) query = query.limit(limit);
+    if (offset) query = query.offset(offset);
+
+    const rows = await query;
+
+    return rows.map(({ booking, user, trainer }: { booking: PtBooking; user: User; trainer: PersonalTrainer }) => ({
+      ...booking,
+      user,
+      trainer,
+    }));
+  }
+
+  async getAllPtSessionPackagesWithUsers(limit?: number, offset?: number, branch?: string): Promise<(PtSessionPackage & { user: User })[]> {
+    let query = db
+      .select({
+        pkg: ptSessionPackages,
+        user: users,
+      })
+      .from(ptSessionPackages)
+      .innerJoin(users, eq(ptSessionPackages.userId, users.id))
+      .orderBy(desc(ptSessionPackages.createdAt));
+
+    if (branch) {
+      query = query.where(eq(users.homeBranch, branch));
+    }
+
+    if (limit) query = query.limit(limit);
+    if (offset) query = query.offset(offset);
+
+    const rows = await query;
+
+    return rows.map(({ pkg, user }: { pkg: PtSessionPackage; user: User }) => ({
+      ...pkg,
+      user,
+    }));
+  }
+
+  async getAllPtSessionAttendanceWithUsers(limit?: number, offset?: number, branch?: string): Promise<(PtSessionAttendance & { user: User; trainer: PersonalTrainer })[]> {
+    let query = db
+      .select({
+        attendance: ptSessionAttendance,
+        user: users,
+        trainer: personalTrainers,
+      })
+      .from(ptSessionAttendance)
+      .innerJoin(users, eq(ptSessionAttendance.userId, users.id))
+      .innerJoin(personalTrainers, eq(ptSessionAttendance.trainerId, personalTrainers.id))
+      .orderBy(desc(ptSessionAttendance.sessionDate));
+
+    if (branch) {
+      query = query.where(eq(users.homeBranch, branch));
+    }
+
+    if (limit) query = query.limit(limit);
+    if (offset) query = query.offset(offset);
+
+    const rows = await query;
+
+    return rows.map(({ attendance, user, trainer }: { attendance: PtSessionAttendance; user: User; trainer: PersonalTrainer }) => ({
+      ...attendance,
+      user,
+      trainer,
     }));
   }
 
   async getPtBookingById(id: string): Promise<(PtBooking & { user: User; trainer: PersonalTrainer }) | undefined> {
     const result = await db
       .select({
-        id: ptBookings.id,
-        userId: ptBookings.userId,
-        trainerId: ptBookings.trainerId,
-        bookingDate: ptBookings.bookingDate,
-        duration: ptBookings.duration,
-        sessionCount: ptBookings.sessionCount,
-        status: ptBookings.status,
-        notes: ptBookings.notes,
-        createdAt: ptBookings.createdAt,
-        updatedAt: ptBookings.updatedAt,
+        booking: ptBookings,
         user: users,
         trainer: personalTrainers,
       })
@@ -1253,20 +1626,11 @@ export class DatabaseStorage implements IStorage {
 
     if (result.length === 0) return undefined;
 
-    const row = result[0];
+    const { booking, user, trainer } = result[0];
     return {
-      id: row.id,
-      userId: row.userId,
-      trainerId: row.trainerId,
-      bookingDate: row.bookingDate,
-      duration: row.duration,
-      sessionCount: row.sessionCount,
-      status: row.status,
-      notes: row.notes,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      user: row.user,
-      trainer: row.trainer,
+      ...booking,
+      user,
+      trainer,
     };
   }
 
@@ -1302,21 +1666,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserPtSessionPackages(userId: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer })[]> {
-    const result = await db
+    const rows = await db
       .select({
-        id: ptSessionPackages.id,
-        userId: ptSessionPackages.userId,
-        trainerId: ptSessionPackages.trainerId,
-        totalSessions: ptSessionPackages.totalSessions,
-        usedSessions: ptSessionPackages.usedSessions,
-        remainingSessions: ptSessionPackages.remainingSessions,
-        pricePerSession: ptSessionPackages.pricePerSession,
-        totalPrice: ptSessionPackages.totalPrice,
-        status: ptSessionPackages.status,
-        purchaseDate: ptSessionPackages.purchaseDate,
-        expiryDate: ptSessionPackages.expiryDate,
-        createdAt: ptSessionPackages.createdAt,
-        updatedAt: ptSessionPackages.updatedAt,
+        pkg: ptSessionPackages,
         trainer: personalTrainers,
       })
       .from(ptSessionPackages)
@@ -1324,40 +1676,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ptSessionPackages.userId, userId))
       .orderBy(desc(ptSessionPackages.createdAt));
 
-  return result.map((row: any) => ({
-      id: row.id,
-      userId: row.userId,
-      trainerId: row.trainerId,
-      totalSessions: row.totalSessions,
-      usedSessions: row.usedSessions,
-      remainingSessions: row.remainingSessions,
-      pricePerSession: row.pricePerSession,
-      totalPrice: row.totalPrice,
-      status: row.status,
-      purchaseDate: row.purchaseDate,
-      expiryDate: row.expiryDate,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      trainer: row.trainer,
+    return rows.map(({ pkg, trainer }: { pkg: PtSessionPackage; trainer: PersonalTrainer }) => ({
+      ...pkg,
+      trainer,
     }));
   }
 
   async getPtSessionPackageById(id: string): Promise<(PtSessionPackage & { trainer: PersonalTrainer; user: User }) | undefined> {
     const result = await db
       .select({
-        id: ptSessionPackages.id,
-        userId: ptSessionPackages.userId,
-        trainerId: ptSessionPackages.trainerId,
-        totalSessions: ptSessionPackages.totalSessions,
-        usedSessions: ptSessionPackages.usedSessions,
-        remainingSessions: ptSessionPackages.remainingSessions,
-        pricePerSession: ptSessionPackages.pricePerSession,
-        totalPrice: ptSessionPackages.totalPrice,
-        status: ptSessionPackages.status,
-        purchaseDate: ptSessionPackages.purchaseDate,
-        expiryDate: ptSessionPackages.expiryDate,
-        createdAt: ptSessionPackages.createdAt,
-        updatedAt: ptSessionPackages.updatedAt,
+        pkg: ptSessionPackages,
         trainer: personalTrainers,
         user: users,
       })
@@ -1369,23 +1697,11 @@ export class DatabaseStorage implements IStorage {
 
     if (result.length === 0) return undefined;
 
-    const row = result[0];
+    const { pkg, trainer, user } = result[0];
     return {
-      id: row.id,
-      userId: row.userId,
-      trainerId: row.trainerId,
-      totalSessions: row.totalSessions,
-      usedSessions: row.usedSessions,
-      remainingSessions: row.remainingSessions,
-      pricePerSession: row.pricePerSession,
-      totalPrice: row.totalPrice,
-      status: row.status,
-      purchaseDate: row.purchaseDate,
-      expiryDate: row.expiryDate,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      trainer: row.trainer,
-      user: row.user,
+      ...pkg,
+      trainer,
+      user,
     };
   }
 
@@ -1406,23 +1722,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPackageAttendanceSessions(packageId: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer })[]> {
-    const result = await db
+    const rows = await db
       .select({
-        id: ptSessionAttendance.id,
-        packageId: ptSessionAttendance.packageId,
-        userId: ptSessionAttendance.userId,
-        trainerId: ptSessionAttendance.trainerId,
-        sessionDate: ptSessionAttendance.sessionDate,
-        sessionNumber: ptSessionAttendance.sessionNumber,
-        status: ptSessionAttendance.status,
-        checkInTime: ptSessionAttendance.checkInTime,
-        checkOutTime: ptSessionAttendance.checkOutTime,
-        notes: ptSessionAttendance.notes,
-        adminConfirmed: ptSessionAttendance.adminConfirmed,
-        confirmedBy: ptSessionAttendance.confirmedBy,
-        confirmedAt: ptSessionAttendance.confirmedAt,
-        createdAt: ptSessionAttendance.createdAt,
-        updatedAt: ptSessionAttendance.updatedAt,
+        attendance: ptSessionAttendance,
         trainer: personalTrainers,
       })
       .from(ptSessionAttendance)
@@ -1430,46 +1732,18 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ptSessionAttendance.packageId, packageId))
       .orderBy(desc(ptSessionAttendance.sessionNumber));
 
-  return result.map((row: any) => ({
-      id: row.id,
-      packageId: row.packageId,
-      userId: row.userId,
-      trainerId: row.trainerId,
-      sessionDate: row.sessionDate,
-      sessionNumber: row.sessionNumber,
-      status: row.status,
-      checkInTime: row.checkInTime,
-      checkOutTime: row.checkOutTime,
-      notes: row.notes,
-      adminConfirmed: row.adminConfirmed,
-      confirmedBy: row.confirmedBy,
-      confirmedAt: row.confirmedAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      trainer: row.trainer,
+    return rows.map(({ attendance, trainer }: { attendance: PtSessionAttendance; trainer: PersonalTrainer }) => ({
+      ...attendance,
+      trainer,
     }));
   }
 
   async getUserPtAttendanceSessions(userId: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer; package: PtSessionPackage })[]> {
-    const result = await db
+    const rows = await db
       .select({
-        id: ptSessionAttendance.id,
-        packageId: ptSessionAttendance.packageId,
-        userId: ptSessionAttendance.userId,
-        trainerId: ptSessionAttendance.trainerId,
-        sessionDate: ptSessionAttendance.sessionDate,
-        sessionNumber: ptSessionAttendance.sessionNumber,
-        status: ptSessionAttendance.status,
-        checkInTime: ptSessionAttendance.checkInTime,
-        checkOutTime: ptSessionAttendance.checkOutTime,
-        notes: ptSessionAttendance.notes,
-        adminConfirmed: ptSessionAttendance.adminConfirmed,
-        confirmedBy: ptSessionAttendance.confirmedBy,
-        confirmedAt: ptSessionAttendance.confirmedAt,
-        createdAt: ptSessionAttendance.createdAt,
-        updatedAt: ptSessionAttendance.updatedAt,
+        attendance: ptSessionAttendance,
         trainer: personalTrainers,
-        package: ptSessionPackages,
+        pkg: ptSessionPackages,
       })
       .from(ptSessionAttendance)
       .innerJoin(personalTrainers, eq(ptSessionAttendance.trainerId, personalTrainers.id))
@@ -1477,48 +1751,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ptSessionAttendance.userId, userId))
       .orderBy(desc(ptSessionAttendance.sessionDate));
 
-  return result.map((row: any) => ({
-      id: row.id,
-      packageId: row.packageId,
-      userId: row.userId,
-      trainerId: row.trainerId,
-      sessionDate: row.sessionDate,
-      sessionNumber: row.sessionNumber,
-      status: row.status,
-      checkInTime: row.checkInTime,
-      checkOutTime: row.checkOutTime,
-      notes: row.notes,
-      adminConfirmed: row.adminConfirmed,
-      confirmedBy: row.confirmedBy,
-      confirmedAt: row.confirmedAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      trainer: row.trainer,
-      package: row.package,
+    return rows.map(({ attendance, trainer, pkg }: { attendance: PtSessionAttendance; trainer: PersonalTrainer; pkg: PtSessionPackage }) => ({
+      ...attendance,
+      trainer,
+      package: pkg,
     }));
   }
 
   async getPtSessionAttendanceById(id: string): Promise<(PtSessionAttendance & { trainer: PersonalTrainer; user: User; package: PtSessionPackage }) | undefined> {
     const result = await db
       .select({
-        id: ptSessionAttendance.id,
-        packageId: ptSessionAttendance.packageId,
-        userId: ptSessionAttendance.userId,
-        trainerId: ptSessionAttendance.trainerId,
-        sessionDate: ptSessionAttendance.sessionDate,
-        sessionNumber: ptSessionAttendance.sessionNumber,
-        status: ptSessionAttendance.status,
-        checkInTime: ptSessionAttendance.checkInTime,
-        checkOutTime: ptSessionAttendance.checkOutTime,
-        notes: ptSessionAttendance.notes,
-        adminConfirmed: ptSessionAttendance.adminConfirmed,
-        confirmedBy: ptSessionAttendance.confirmedBy,
-        confirmedAt: ptSessionAttendance.confirmedAt,
-        createdAt: ptSessionAttendance.createdAt,
-        updatedAt: ptSessionAttendance.updatedAt,
+        attendance: ptSessionAttendance,
         trainer: personalTrainers,
         user: users,
-        package: ptSessionPackages,
+        pkg: ptSessionPackages,
       })
       .from(ptSessionAttendance)
       .innerJoin(personalTrainers, eq(ptSessionAttendance.trainerId, personalTrainers.id))
@@ -1575,150 +1821,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ptSessionAttendance.id, id));
   }
 
-  // One-time QR code operations
-  async generateOneTimeQrCode(userId: string): Promise<OneTimeQrCode> {
-    try {
-  const qrCode = randomUUID();
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes from now
 
-      const [newQrCode] = await db
-        .insert(oneTimeQrCodes)
-        .values({
-          userId,
-          qrCode,
-          expiresAt,
-          status: 'valid',
-        })
-        .returning();
-
-      return newQrCode;
-    } catch (error: any) {
-      console.error(`generateOneTimeQrCode failed for user ${userId}:`, error?.stack || error);
-      throw new Error(error?.message || 'Failed to generate one-time QR code');
-    }
-  }
-
-  async validateOneTimeQrCode(qrCode: string): Promise<(OneTimeQrCode & { user: User; membership?: Membership & { plan: MembershipPlan } }) | undefined> {
-    const result = await db
-      .select({
-        id: oneTimeQrCodes.id,
-        userId: oneTimeQrCodes.userId,
-        qrCode: oneTimeQrCodes.qrCode,
-        expiresAt: oneTimeQrCodes.expiresAt,
-        usedAt: oneTimeQrCodes.usedAt,
-        status: oneTimeQrCodes.status,
-        createdAt: oneTimeQrCodes.createdAt,
-        user: users,
-        membershipId: memberships.id,
-        membershipUserId: memberships.userId,
-        membershipPlanId: memberships.planId,
-        membershipStartDate: memberships.startDate,
-        membershipEndDate: memberships.endDate,
-        membershipStatus: memberships.status,
-        membershipAutoRenewal: memberships.autoRenewal,
-        membershipCreatedAt: memberships.createdAt,
-        planId: membershipPlans.id,
-        planName: membershipPlans.name,
-        planDescription: membershipPlans.description,
-        planPrice: membershipPlans.price,
-        planDurationMonths: membershipPlans.durationMonths,
-        planFeatures: membershipPlans.features,
-        planStripePriceId: membershipPlans.stripePriceId,
-        planActive: membershipPlans.active,
-        planCreatedAt: membershipPlans.createdAt,
-      })
-      .from(oneTimeQrCodes)
-      .innerJoin(users, eq(oneTimeQrCodes.userId, users.id))
-      .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, "active")))
-      .leftJoin(membershipPlans, eq(memberships.planId, membershipPlans.id))
-      .where(eq(oneTimeQrCodes.qrCode, qrCode))
-      .limit(1);
-
-    if (result.length === 0) return undefined;
-
-    const row = result[0];
-    return {
-      id: row.id,
-      userId: row.userId,
-      qrCode: row.qrCode,
-      expiresAt: row.expiresAt,
-      usedAt: row.usedAt,
-      status: row.status,
-      createdAt: row.createdAt,
-      user: row.user,
-      membership: row.membershipId ? {
-        id: row.membershipId,
-        userId: row.membershipUserId!,
-        planId: row.membershipPlanId!,
-        startDate: row.membershipStartDate!,
-        endDate: row.membershipEndDate!,
-        status: row.membershipStatus!,
-        autoRenewal: row.membershipAutoRenewal!,
-        createdAt: row.membershipCreatedAt!,
-        plan: {
-          id: row.planId!,
-          name: row.planName!,
-          description: row.planDescription,
-          price: row.planPrice!,
-          durationMonths: row.planDurationMonths!,
-          features: row.planFeatures,
-          stripePriceId: row.planStripePriceId,
-          active: row.planActive!,
-          createdAt: row.planCreatedAt!,
-        }
-      } : undefined
-    };
-  }
-
-  async markQrCodeAsUsed(qrCode: string): Promise<void> {
-    // Atomic update: only mark as used if status is still 'valid'
-    // This prevents race conditions where two concurrent requests try to use the same QR
-    const result = await db
-      .update(oneTimeQrCodes)
-      .set({
-        status: 'used',
-        usedAt: new Date(),
-      })
-      .where(and(
-        eq(oneTimeQrCodes.qrCode, qrCode),
-        eq(oneTimeQrCodes.status, 'valid')
-      ))
-      .returning();
-    
-    if (result.length === 0) {
-      // Check if QR code exists and what its status is
-      const existingQr = await db
-        .select()
-        .from(oneTimeQrCodes)
-        .where(eq(oneTimeQrCodes.qrCode, qrCode))
-        .limit(1);
-      
-      if (existingQr.length > 0) {
-        console.error(`QR code ${qrCode} has status: ${existingQr[0].status}`);
-      } else {
-        console.error(`QR code ${qrCode} not found in database`);
-      }
-      
-      throw new Error('QR code already used or invalid');
-    }
-  }
-
-  async cleanupExpiredQrCodes(): Promise<number> {
-    const now = new Date();
-    
-    // Mark expired QR codes
-    const result = await db
-      .update(oneTimeQrCodes)
-      .set({ status: 'expired' })
-      .where(and(
-        eq(oneTimeQrCodes.status, 'valid'),
-        lte(oneTimeQrCodes.expiresAt, now)
-      ))
-      .returning();
-    
-    return result.length;
-  }
 
   // Password Reset operations
   async createPasswordResetToken(email: string, token: string): Promise<PasswordResetToken> {
@@ -1734,7 +1837,7 @@ export class DatabaseStorage implements IStorage {
         status: 'valid',
       })
       .returning();
-    
+
     return resetToken;
   }
 
@@ -1744,7 +1847,7 @@ export class DatabaseStorage implements IStorage {
       .from(passwordResetTokens)
       .where(eq(passwordResetTokens.token, token))
       .limit(1);
-    
+
     return resetToken;
   }
 
@@ -1763,7 +1866,7 @@ export class DatabaseStorage implements IStorage {
 
   async cleanupExpiredResetTokens(): Promise<number> {
     const now = new Date();
-    
+
     const result = await db
       .update(passwordResetTokens)
       .set({ status: 'expired' })
@@ -1772,14 +1875,14 @@ export class DatabaseStorage implements IStorage {
         lte(passwordResetTokens.expiresAt, now)
       ))
       .returning();
-    
+
     return result.length;
   }
 
   async updateUserPassword(email: string, newPassword: string): Promise<void> {
     await db
       .update(users)
-      .set({ 
+      .set({
         password: newPassword,
         updatedAt: new Date(),
       })
@@ -1832,7 +1935,7 @@ export class DatabaseStorage implements IStorage {
       .from(notifications)
       .where(eq(notifications.userId, userId))
       .orderBy(desc(notifications.createdAt));
-    
+
     return userNotifications;
   }
 
@@ -1841,7 +1944,7 @@ export class DatabaseStorage implements IStorage {
       .insert(notifications)
       .values(notification)
       .returning();
-    
+
     return newNotification;
   }
 
@@ -1880,7 +1983,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(pushSubscriptions)
       .where(eq(pushSubscriptions.userId, userId));
-    
+
     return subscriptions;
   }
 
@@ -1908,7 +2011,7 @@ export class DatabaseStorage implements IStorage {
       .insert(pushSubscriptions)
       .values(subscription)
       .returning();
-    
+
     return newSubscription;
   }
 
@@ -2016,10 +2119,12 @@ export class DatabaseStorage implements IStorage {
       // Send email reminder
       try {
         const memberName = member.firstName || member.username;
-        await sendInactivityReminderEmail(member.email, memberName, daysInactive);
-        console.log(`Inactivity reminder email sent to ${member.email}`);
+        if (member.email) {
+          await sendInactivityReminderEmail(member.email, memberName, daysInactive);
+          console.log(`Inactivity reminder email sent to ${member.email} `);
+        }
       } catch (error) {
-        console.error(`Failed to send email reminder to ${member.email}:`, error);
+        console.error(`Failed to send email reminder to ${member.email}: `, error);
         // Continue with other members even if one email fails
       }
 
@@ -2027,6 +2132,59 @@ export class DatabaseStorage implements IStorage {
     }
 
     return reminderCount;
+  }
+
+  async validateOneTimeQrCode(qrCode: string): Promise<{ userId: string; status: string; expiresAt: Date; user: User; membership?: Membership } | undefined> {
+    return undefined;
+  }
+
+  async markQrCodeAsUsed(qrCode: string): Promise<void> {
+    return;
+  }
+
+  // Audit Log operations
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const [created] = await db.insert(auditLogs).values(log).returning();
+    return created;
+  }
+
+  async getAuditLogs(limit: number = 100, offset: number = 0, branch?: string, search?: string): Promise<(AuditLog & { user: User })[]> {
+    const conditions = [];
+    if (branch) {
+      conditions.push(eq(auditLogs.branch, branch));
+    }
+    if (search) {
+      const searchLower = `% ${search.toLowerCase()}% `;
+      conditions.push(or(
+        ilike(auditLogs.action, searchLower),
+        ilike(auditLogs.details, searchLower), // Note: ilike on jsonb might not work directly in all postgres versions, but usually casts to text
+        ilike(users.firstName, searchLower),
+        ilike(users.lastName, searchLower),
+        ilike(users.email, searchLower)
+      ));
+    }
+
+    const logs = await db
+      .select()
+      .from(auditLogs)
+      .leftJoin(users, eq(auditLogs.userId, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return logs.map((row: any) => ({
+      ...row.audit_logs,
+      user: row.users || { firstName: 'Unknown', lastName: 'User', email: 'unknown' },
+    }));
+  }
+
+  async getAdmins(): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .where(or(eq(users.role, 'admin'), eq(users.role, 'super_admin')))
+      .orderBy(desc(users.createdAt));
   }
 }
 

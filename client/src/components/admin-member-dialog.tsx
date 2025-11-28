@@ -21,9 +21,10 @@ type MemberFormData = z.infer<typeof memberSchema>;
 interface AdminMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
 }
 
-export default function AdminMemberDialog({ open, onOpenChange }: AdminMemberDialogProps) {
+export default function AdminMemberDialog({ open, onOpenChange, onSuccess }: AdminMemberDialogProps) {
   const { createMember } = useAdminMembersActions();
 
   const form = useForm<MemberFormData>({
@@ -43,6 +44,7 @@ export default function AdminMemberDialog({ open, onOpenChange }: AdminMemberDia
       onSuccess: () => {
         form.reset();
         onOpenChange(false);
+        if (onSuccess) onSuccess();
       },
     });
   };

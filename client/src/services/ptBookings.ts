@@ -21,6 +21,7 @@ export interface PTBooking {
     id: string;
     name: string;
     specialization: string;
+    branch?: string;
   };
 }
 

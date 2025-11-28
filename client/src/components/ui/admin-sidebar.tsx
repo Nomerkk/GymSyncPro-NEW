@@ -1,19 +1,21 @@
 import { useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Dumbbell, 
-  UserCog, 
-  CreditCard, 
-  QrCode, 
+import { useAuth } from "@/hooks/useAuth";
+import {
+  LayoutDashboard,
+  Users,
+  Dumbbell,
+  UserCog,
+  CreditCard,
+  QrCode,
   MessageSquare,
   Calendar,
   CalendarCheck,
-  Megaphone,
   X,
   HelpCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Shield,
+  ClipboardList
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import idachiLogoPng from "@assets/idachi1.png";
@@ -27,17 +29,18 @@ interface AdminSidebarProps {
   onToggleCollapse?: () => void;
 }
 
-export default function AdminSidebar({ 
-  className, 
-  isOpen, 
+export default function AdminSidebar({
+  className,
+  isOpen,
   onClose,
   isCollapsed = false,
   onToggleCollapse
 }: AdminSidebarProps) {
   const [location] = useLocation();
+  const { isSuperAdmin } = useAuth();
 
   const menuItems = [
-    { href: "/admin", icon: LayoutDashboard, label: "Dashboard" },
+    { href: "/admin/overview", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/admin/members", icon: Users, label: "Members" },
     { href: "/admin/classes", icon: Dumbbell, label: "Classes" },
     { href: "/admin/trainers", icon: UserCog, label: "Trainers" },
@@ -45,9 +48,15 @@ export default function AdminSidebar({
     { href: "/admin/pt-bookings", icon: Calendar, label: "PT Bookings" },
     { href: "/admin/class-bookings", icon: CalendarCheck, label: "Bookings" },
     { href: "/admin/checkins", icon: QrCode, label: "Check-In" },
-    { href: "/admin/promotions", icon: Megaphone, label: "Promotions" },
     { href: "/admin/feedback", icon: MessageSquare, label: "Feedback" },
   ];
+
+  if (isSuperAdmin) {
+    menuItems.push(
+      { href: "/admin/management", icon: Shield, label: "Manage Admins" },
+      { href: "/admin/audit-logs", icon: ClipboardList, label: "Audit Logs" }
+    );
+  }
 
   const handleNavClick = (e: React.MouseEvent, href: string) => {
     e.preventDefault();
@@ -60,7 +69,7 @@ export default function AdminSidebar({
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden animate-fade-in backdrop-blur-sm"
           onClick={onClose}
           data-testid="overlay-sidebar"
@@ -68,7 +77,7 @@ export default function AdminSidebar({
       )}
 
       {/* Sidebar */}
-      <aside 
+      <aside
         className={cn(
           "fixed lg:sticky top-0 left-0 h-screen z-50 flex flex-col border-r border-border bg-card smooth-transition",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
@@ -83,9 +92,9 @@ export default function AdminSidebar({
             <div className="flex items-center gap-3 animate-fade-in">
               <picture data-testid="img-sidebar-logo">
                 <source srcSet={idachiLogoWebp} type="image/webp" />
-                <img 
-                  src={idachiLogoPng} 
-                  alt="Idachi Fitness Logo" 
+                <img
+                  src={idachiLogoPng}
+                  alt="Idachi Fitness Logo"
                   className="w-10 h-10 object-contain rounded-lg"
                   loading="lazy" decoding="async"
                   width="40" height="40"
@@ -97,13 +106,13 @@ export default function AdminSidebar({
               </div>
             </div>
           )}
-          
+
           {isCollapsed && (
             <picture data-testid="img-sidebar-logo-collapsed" className="mx-auto animate-scale-in">
               <source srcSet={idachiLogoWebp} type="image/webp" />
-              <img 
-                src={idachiLogoPng} 
-                alt="Idachi Fitness Logo" 
+              <img
+                src={idachiLogoPng}
+                alt="Idachi Fitness Logo"
                 className="w-10 h-10 object-contain rounded-lg"
                 loading="lazy" decoding="async"
                 width="40" height="40"
@@ -125,7 +134,7 @@ export default function AdminSidebar({
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = location === item.href;
-            
+
             return (
               <button
                 key={item.href}
@@ -148,7 +157,7 @@ export default function AdminSidebar({
                     isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
                   )} />
                 </div>
-                
+
                 {!isCollapsed && (
                   <span className={cn(
                     "text-sm font-medium transition-colors animate-fade-in",

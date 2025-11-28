@@ -5,7 +5,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import AdminLayout from "@/components/ui/admin-layout";
 import AdminClassDialog from "@/components/admin-class-dialog";
 import { Plus, Edit, Trash2, Users, Calendar } from "lucide-react";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -13,6 +12,8 @@ import type { GymClass } from "@shared/schema.ts";
 import PageHeader from "@/components/layout/page-header";
 import { useClasses, useClassActions } from "@/hooks/useClasses";
 import { getErrorMessage } from "@/lib/errors";
+import { BranchBadge } from "@/components/ui/branch-badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface AdminDashboardData {
   stats?: {
@@ -22,12 +23,13 @@ interface AdminDashboardData {
 
 export default function AdminClasses() {
   const { toast } = useToast();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, isAdmin, isSuperAdmin } = useAuth();
   const [showClassDialog, setShowClassDialog] = useState(false);
   const [selectedClass, setSelectedClass] = useState<GymClass | null>(null);
+  const [branchFilter, setBranchFilter] = useState<string>("all");
 
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || user?.role !== 'admin')) {
+    if (!isLoading && (!isAuthenticated || !isAdmin)) {
       toast({
         title: "Unauthorized",
         description: "Admin access required. Redirecting...",
@@ -40,21 +42,18 @@ export default function AdminClasses() {
     }
   }, [isAuthenticated, isLoading, user, toast]);
 
-  const { data: dashboardData } = useQuery<AdminDashboardData>({
-    queryKey: ["/api/admin/dashboard"],
-    enabled: isAuthenticated && user?.role === 'admin',
-  });
 
-  const { data: gymClasses } = useClasses(isAuthenticated && user?.role === 'admin');
+
+  const { data: gymClasses, refetch } = useClasses(isAuthenticated && isAdmin, branchFilter !== "all" ? branchFilter : undefined);
   const { remove } = useClassActions();
 
   // Do not block rendering with a loading spinner; rely on cached data.
 
-  if (!user || user.role !== 'admin') {
+  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
     return null;
   }
 
-  const stats = dashboardData?.stats || {};
+
 
   const handleAddClass = () => {
     setSelectedClass(null);
@@ -77,6 +76,7 @@ export default function AdminClasses() {
         title: "Success!",
         description: "Class has been deleted",
       });
+      refetch();
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -87,7 +87,7 @@ export default function AdminClasses() {
   };
 
   return (
-    <AdminLayout user={user} notificationCount={stats.expiringSoon || 0}>
+    <>
       <div className="space-y-6">
         <PageHeader
           title="Gym Classes"
@@ -104,8 +104,46 @@ export default function AdminClasses() {
           }
         />
 
+        {isSuperAdmin && (
+          <div className="flex justify-end mb-4">
+            <div className="w-full md:w-48">
+              <Select value={branchFilter} onValueChange={setBranchFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter Branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Branches</SelectItem>
+                  <SelectItem value="Cikarang">Cikarang</SelectItem>
+                  <SelectItem value="Jakarta Barat">Jakarta Barat</SelectItem>
+                  <SelectItem value="Bandung">Bandung</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         {/* Classes Grid */}
-        {!gymClasses || gymClasses.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Card key={i} className="overflow-hidden">
+                <AspectRatio ratio={16 / 9}>
+                  <div className="w-full h-full bg-muted animate-pulse" />
+                </AspectRatio>
+                <CardHeader>
+                  <div className="space-y-2">
+                    <div className="h-6 w-3/4 bg-muted animate-pulse rounded" />
+                    <div className="h-4 w-1/2 bg-muted animate-pulse rounded" />
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="h-4 w-full bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-2/3 bg-muted animate-pulse rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : !gymClasses || gymClasses.length === 0 ? (
           <Card>
             <CardContent className="py-12">
               <p className="text-center text-muted-foreground">No classes available</p>
@@ -116,7 +154,7 @@ export default function AdminClasses() {
             {gymClasses.map((gymClass) => (
               <Card key={gymClass.id} className="hover:shadow-lg transition-shadow overflow-hidden">
                 {gymClass.imageUrl && (
-                  <AspectRatio ratio={16/9}>
+                  <AspectRatio ratio={16 / 9}>
                     <img src={gymClass.imageUrl} alt={gymClass.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   </AspectRatio>
                 )}
@@ -128,16 +166,19 @@ export default function AdminClasses() {
                         {gymClass.instructorName}
                       </p>
                     </div>
-                    <Badge variant={gymClass.active ? "default" : "secondary"}>
-                      {gymClass.active ? "Active" : "Inactive"}
-                    </Badge>
+                    <div className="flex flex-col gap-2 items-end">
+                      <Badge variant={gymClass.active ? "default" : "secondary"}>
+                        {gymClass.active ? "Active" : "Inactive"}
+                      </Badge>
+                      <BranchBadge branch={gymClass.branch} className="text-xs" />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {gymClass.description || "No description"}
                   </p>
-                  
+
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar size={16} className="text-muted-foreground" />
                     <span className="text-foreground">{gymClass.schedule}</span>
@@ -183,6 +224,6 @@ export default function AdminClasses() {
         onOpenChange={setShowClassDialog}
         gymClass={selectedClass}
       />
-    </AdminLayout>
+    </>
   );
 }

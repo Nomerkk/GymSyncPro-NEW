@@ -3,7 +3,7 @@
  * Centralizes membership status computation and filtering logic previously duplicated
  * inside page components. Keeps UI layers (pages/components) focused on presentation.
  */
- 
+
 
 /** Raw member shape as received from API queries used in admin members page. */
 export interface MemberWithMembership {
@@ -46,8 +46,14 @@ export function isExpiringSoon(endDate: string | undefined): boolean {
 }
 
 /** Derives a human-readable membership status given a member object. */
-export function computeMembershipStatus(member: MemberWithMembership): string {
-  if (!member.membership) return "No Membership";
+export function computeMembershipStatus(member: MemberWithMembership | null | undefined): string {
+  if (!member || !member.membership) return "No Membership";
+
+  // Check for expiration by date (client-side safety check)
+  if (member.membership.endDate && new Date(member.membership.endDate) <= new Date()) {
+    return "No Membership"; // Or "Expired" if preferred, but user asked for "no membership" behavior
+  }
+
   const rawStatus = member.membership.status;
   if (rawStatus === "expired") return "Expired";
   if (member.membership.endDate && isExpiringSoon(member.membership.endDate)) return "Expiring Soon";

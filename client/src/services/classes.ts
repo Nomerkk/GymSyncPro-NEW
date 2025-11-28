@@ -18,8 +18,10 @@ export const classesService = {
     const res = await httpFetch<GymClassPublic[]>("/api/classes", { method: "GET" });
     return res.json || [];
   },
-  async listAdmin(): Promise<GymClass[]> {
-    const res = await httpFetch<GymClass[]>("/api/admin/classes", { method: "GET" });
+  async listAdmin(branch?: string): Promise<GymClass[]> {
+    const params = new URLSearchParams();
+    if (branch) params.append("branch", branch);
+    const res = await httpFetch<GymClass[]>(`/api/admin/classes?${params.toString()}`, { method: "GET" });
     return res.json || [];
   },
   async create(data: {

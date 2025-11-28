@@ -16,7 +16,7 @@ const isAuthDebugEnabled = () => Boolean(env.auth.debugFlag) || env.isDevelopmen
 export async function setupAuth(app: Express) {
   // Require SESSION_SECRET in production for security
   const sessionSecret = env.auth.sessionSecret;
-  
+
   if (!sessionSecret) {
     if (env.isProduction) {
       throw new Error("SESSION_SECRET environment variable is required in production for secure session management");
@@ -57,19 +57,19 @@ export async function setupAuth(app: Express) {
   }
 
   const sessionMiddleware = session({
-      name: 'sid',
-      store: sessionStore,
-      secret: sessionSecret || "dev-secret-change-in-production",
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        httpOnly: true,
-        secure: cookieSecure,
-        // Set via env COOKIE_SAME_SITE=none for cross-origin HTTPS setups
-        sameSite: cookieSameSite,
-      },
-    });
+    name: 'sid',
+    store: sessionStore,
+    secret: sessionSecret || "dev-secret-change-in-production",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      httpOnly: true,
+      secure: cookieSecure,
+      // Set via env COOKIE_SAME_SITE=none for cross-origin HTTPS setups
+      sameSite: cookieSameSite,
+    },
+  });
 
   // Middleware to log Set-Cookie diagnostics (dev / AUTH_DEBUG)
   app.use((req, res, next) => {
@@ -103,19 +103,19 @@ export async function setupAuth(app: Express) {
       try {
         // Try to find user by username, email, or phone
         const user = await storage.getUserByEmailOrPhoneOrUsername(username);
-        
+
         if (!user) {
           return done(null, false, { message: "Email/Nomor Telepon/Username atau password salah" });
         }
 
         const isValid = await bcrypt.compare(password, user.password);
-        
+
         if (!isValid) {
           return done(null, false, { message: "Email/Nomor Telepon/Username atau password salah" });
         }
 
-        // Check if email is verified (skip for admin users)
-        if (user.role !== 'admin' && !user.emailVerified) {
+        // Check if email is verified (skip for admin and super_admin users)
+        if (user.role !== 'admin' && user.role !== 'super_admin' && !user.emailVerified) {
           return done(null, false, { message: "Email belum diverifikasi. Silakan cek email Anda untuk kode verifikasi" });
         }
 
@@ -164,8 +164,52 @@ export function isAuthenticated(req: any, res: any, next: any) {
 
 // Middleware to check if user is admin
 export function isAdmin(req: any, res: any, next: any) {
-  if (req.isAuthenticated() && req.user?.role === 'admin') {
+  const userRole = req.user?.role;
+  if (req.isAuthenticated() && (userRole === 'admin' || userRole === 'super_admin')) {
     return next();
   }
   res.status(403).json({ message: "Admin access required" });
+}
+
+// Middleware to check if user is super admin
+export function requireSuperAdmin(req: any, res: any, next: any) {
+  if (req.isAuthenticated() && req.user?.role === 'super_admin') {
+    return next();
+  }
+  res.status(403).json({ message: "Super Admin access required" });
+}
+
+// Helper to log admin activity
+export async function logActivity(
+  userId: string | undefined,
+  action: string,
+  details: any,
+  req?: any,
+  entityId?: string,
+  entityType?: string
+) {
+  try {
+    if (!userId) return;
+
+    const user = await storage.getUser(userId);
+    const branch = user?.homeBranch || null;
+
+    let ipAddress = req?.headers?.['x-forwarded-for'] || req?.socket?.remoteAddress;
+    if (Array.isArray(ipAddress)) ipAddress = ipAddress[0];
+
+    const userAgent = req?.headers?.['user-agent'];
+
+    await storage.createAuditLog({
+      userId,
+      action,
+      entityId,
+      entityType,
+      details,
+      ipAddress,
+      userAgent,
+      branch,
+    });
+  } catch (error) {
+    console.error('[Audit Log] Failed to create log:', error);
+  }
 }

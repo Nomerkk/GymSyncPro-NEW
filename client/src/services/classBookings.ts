@@ -22,12 +22,15 @@ export interface ClassBooking {
     schedule: string;
     capacity: number;
     currentEnrollment: number;
+    branch?: string;
   };
 }
 
 export const classBookingsService = {
-  async listAdmin(): Promise<ClassBooking[]> {
-    const res = await httpFetch<ClassBooking[]>("/api/admin/class-bookings", { method: "GET" });
+  async listAdmin(branch?: string): Promise<ClassBooking[]> {
+    const params = new URLSearchParams();
+    if (branch) params.append("branch", branch);
+    const res = await httpFetch<ClassBooking[]>(`/api/admin/class-bookings?${params.toString()}`, { method: "GET" });
     return res.json || [];
   },
   async listMine(): Promise<ClassBooking[]> {

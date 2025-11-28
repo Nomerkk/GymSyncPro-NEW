@@ -3,8 +3,9 @@ import { createServer, type Server } from "http";
 import passport from "passport";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isAdmin } from "./auth";
-import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSchema, insertCheckInSchema, insertPaymentSchema, registerSchema, loginSchema, forgotPasswordRequestSchema, resetPasswordSchema, verifyEmailSchema, insertPromotionSchema } from "../shared/schema";
+import { setupAuth, isAuthenticated, isAdmin, logActivity } from "./auth";
+import { insertMembershipPlanSchema, insertGymClassSchema, insertClassBookingSchema, insertCheckInSchema, insertPaymentSchema, registerSchema, loginSchema, forgotPasswordRequestSchema, resetPasswordSchema, verifyEmailSchema, insertPromotionSchema, insertFeedbackSchema, insertFeedbackReplySchema } from "../shared/schema";
+import { createAdminSchema, updateAdminSchema } from "../shared/admin-schema";
 import { sendPasswordResetEmail } from "./email/resend";
 import { z } from "zod";
 import { randomUUID, createHash } from "node:crypto";
@@ -81,7 +82,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/register', async (req, res) => {
     try {
       const validatedData = registerSchema.parse(req.body);
-      
+
       // Check if username or email already exists
       const existingUser = await storage.getUserByUsername(validatedData.username);
       if (existingUser) {
@@ -109,15 +110,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate 6-digit verification code
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-      
+
       // Store verification code
-      await storage.storeVerificationCode(user.email, verificationCode);
-      
+      await storage.storeVerificationCode(validatedData.email, verificationCode);
+
       // Send verification email
       const { sendVerificationEmail } = await import('./email/resend');
-      await sendVerificationEmail(user.email, verificationCode);
+      await sendVerificationEmail(validatedData.email, verificationCode);
 
-      res.json({ 
+      res.json({
         message: "Registrasi berhasil! Silakan cek email Anda untuk kode verifikasi.",
         email: user.email,
         requireVerification: true
@@ -132,22 +133,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/register-admin', async (req, res) => {
     try {
       const { adminSecretKey, ...userData } = req.body;
-      
+
       console.log("Admin registration attempt:", { username: userData.username, email: userData.email });
-      
+
       // Check for admin secret key (you can set this in environment variables)
       // For now, we'll allow if the key is "admin123" or if ADMIN_SECRET_KEY env var matches
       const validSecretKey = env.adminSecret;
-      
+
       if (adminSecretKey !== validSecretKey) {
         console.log("Invalid admin secret key provided");
         return res.status(403).json({ message: "Invalid admin secret key" });
       }
-      
+
       // Validate data
       const validatedData = registerSchema.parse(userData);
       console.log("Data validated successfully");
-      
+
       // Check if username already exists
       const existingUsername = await storage.getUserByUsername(validatedData.username);
       if (existingUsername) {
@@ -210,9 +211,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/verify-email', async (req, res) => {
     try {
       const validatedData = verifyEmailSchema.parse(req.body);
-      
+
       const verified = await storage.verifyEmailCode(validatedData.email, validatedData.verificationCode);
-      
+
       if (!verified) {
         return res.status(400).json({ message: "Kode verifikasi tidak valid atau sudah kadaluarsa" });
       }
@@ -234,13 +235,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error("[Auth] Failed to save session post verification:", saveErr);
               return res.status(500).json({ message: "Login session error" });
             }
-            res.json({ 
+            res.json({
               message: "Email berhasil diverifikasi! Selamat datang di Idachi Fitness!",
               user: { ...user, password: undefined }
             });
           });
         } catch (_) {
-          res.json({ 
+          res.json({
             message: "Email berhasil diverifikasi! Selamat datang di Idachi Fitness!",
             user: { ...user, password: undefined }
           });
@@ -256,7 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/send-verification-code', async (req, res) => {
     try {
       const { email } = req.body;
-      
+
       if (!email) {
         return res.status(400).json({ message: "Email diperlukan" });
       }
@@ -270,15 +271,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate 6-digit verification code
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-      
+
       // Store in pending verifications
       pendingVerifications.set(email, { code: verificationCode, expiresAt });
-      
+
       // Send verification email
       const { sendVerificationEmail } = await import('./email/resend');
       await sendVerificationEmail(email, verificationCode);
 
-      res.json({ 
+      res.json({
         message: "Kode verifikasi telah dikirim ke email Anda",
         success: true
       });
@@ -292,13 +293,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/check-verification-code', async (req, res) => {
     try {
       const { email, verificationCode } = req.body;
-      
+
       if (!email || !verificationCode) {
         return res.status(400).json({ message: "Email dan kode verifikasi diperlukan" });
       }
 
       const pending = pendingVerifications.get(email);
-      
+
       if (!pending) {
         return res.status(400).json({ message: "Kode verifikasi tidak ditemukan. Silakan kirim ulang kode." });
       }
@@ -315,7 +316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Mark as verified by keeping it but adding verified flag
       pendingVerifications.set(email, { ...pending, verified: true } as any);
 
-      res.json({ 
+      res.json({
         message: "Email berhasil diverifikasi!",
         verified: true
       });
@@ -329,7 +330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/register-verified', async (req, res) => {
     try {
       const validatedData = registerSchema.parse(req.body);
-      
+
       // Check if email was verified
       const pending = pendingVerifications.get(validatedData.email);
       if (!pending || !(pending as any).verified) {
@@ -341,7 +342,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pendingVerifications.delete(validatedData.email);
         return res.status(400).json({ message: "Verifikasi email sudah kadaluarsa. Silakan verifikasi ulang." });
       }
-      
+
       // Check if username already exists
       const existingUser = await storage.getUserByUsername(validatedData.username);
       if (existingUser) {
@@ -383,13 +384,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error("[Auth] Failed to save session post register-verified:", saveErr);
               return res.status(500).json({ message: "Login session error" });
             }
-            res.json({ 
+            res.json({
               message: "Registrasi berhasil! Selamat datang di Idachi Fitness!",
               user: { ...user, password: undefined }
             });
           });
         } catch (_) {
-          res.json({ 
+          res.json({
             message: "Registrasi berhasil! Selamat datang di Idachi Fitness!",
             user: { ...user, password: undefined }
           });
@@ -405,7 +406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/resend-verification-code', async (req, res) => {
     try {
       const { email } = req.body;
-      
+
       if (!email) {
         return res.status(400).json({ message: "Email diperlukan" });
       }
@@ -423,15 +424,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate new 6-digit verification code
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-      
+
       // Store new verification code
       await storage.storeVerificationCode(email, verificationCode);
-      
+
       // Send verification email
       const { sendVerificationEmail } = await import('./email/resend');
       await sendVerificationEmail(email, verificationCode);
 
-      res.json({ 
+      res.json({
         message: "Kode verifikasi baru telah dikirim ke email Anda",
         success: true
       });
@@ -444,7 +445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Login route
   app.post('/api/login', (req, res, next) => {
     const { rememberMe } = req.body;
-    
+
     passport.authenticate('local', (err: any, user: any, info: any) => {
       if (err) {
         return res.status(500).json({ message: "Login error" });
@@ -456,7 +457,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (err) {
           return res.status(500).json({ message: "Login error" });
         }
-        
+
         // Extend session if remember me is checked
         if (rememberMe && req.session.cookie) {
           // Set cookie to expire in 30 days instead of default session lifetime
@@ -491,7 +492,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/forgot-password', async (req, res) => {
     try {
       const validatedData = forgotPasswordRequestSchema.parse(req.body);
-      
+
       // Check if user exists
       const user = await storage.getUserByEmail(validatedData.email);
       if (!user) {
@@ -501,22 +502,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate 6-digit verification code
       const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
-      
+
       // Store token in database
       await storage.createPasswordResetToken(validatedData.email, resetToken);
-      
+
       // Send email
       const emailResult = await sendPasswordResetEmail(validatedData.email, resetToken);
-      
+
       // Check if email was sent successfully
       if (emailResult?.error) {
         console.error('[Forgot Password] Email sending failed:', emailResult.error);
-        return res.status(500).json({ 
+        return res.status(500).json({
           message: "Terjadi kesalahan saat mengirim email. Silakan hubungi administrator.",
-          details: emailResult.error.message 
+          details: emailResult.error.message
         });
       }
-      
+
       res.json({ message: "Kode verifikasi telah dikirim ke email Anda" });
     } catch (error: any) {
       console.error("Error in forgot password:", error);
@@ -528,32 +529,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/reset-password', async (req, res) => {
     try {
       const validatedData = resetPasswordSchema.parse(req.body);
-      
+
       // Validate token
       const resetToken = await storage.getPasswordResetToken(validatedData.token);
-      
+
       if (!resetToken) {
         return res.status(400).json({ message: "Kode verifikasi tidak valid" });
       }
-      
+
       if (resetToken.status !== 'valid') {
         return res.status(400).json({ message: "Kode verifikasi sudah digunakan atau kadaluarsa" });
       }
-      
+
       if (new Date() > resetToken.expiresAt) {
         await storage.markTokenAsUsed(validatedData.token);
         return res.status(400).json({ message: "Kode verifikasi sudah kadaluarsa" });
       }
-      
+
       // Hash new password
       const hashedPassword = await bcrypt.hash(validatedData.newPassword, 10);
-      
+
       // Update password
       await storage.updateUserPassword(resetToken.email, hashedPassword);
-      
+
       // Mark token as used
       await storage.markTokenAsUsed(validatedData.token);
-      
+
       res.json({ message: "Password berhasil direset. Silakan login dengan password baru Anda" });
     } catch (error: any) {
       console.error("Error in reset password:", error);
@@ -613,7 +614,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const { endpoint, keys } = req.body;
-      
+
       if (!endpoint || !keys?.p256dh || !keys?.auth) {
         return res.status(400).json({ message: "Invalid subscription data" });
       }
@@ -637,7 +638,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const { endpoint } = req.body;
-      
+
       if (!endpoint) {
         return res.status(400).json({ message: "Endpoint required" });
       }
@@ -689,7 +690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/member/dashboard', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      
+
       const [membership, checkIns, classBookings, payments, crowdCount] = await Promise.all([
         storage.getUserMembership(userId),
         storage.getUserCheckIns(userId, 10),
@@ -702,8 +703,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const now = new Date();
       const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const monthlyCheckIns = checkIns.filter(checkIn => checkIn.checkInTime && checkIn.checkInTime >= thisMonth).length;
-      
-      const upcomingClasses = classBookings.filter(booking => 
+
+      const upcomingClasses = classBookings.filter(booking =>
         booking.status === 'booked' && booking.bookingDate > now
       );
 
@@ -773,12 +774,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/checkin/generate', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      
+
       // Check if user is suspended
       const user = await storage.getUser(userId);
       if (user?.active === false) {
-        return res.status(403).json({ 
-          message: "Akun Anda sedang dinonaktifkan. Silakan hubungi admin untuk informasi lebih lanjut." 
+        return res.status(403).json({
+          message: "Akun Anda sedang dinonaktifkan. Silakan hubungi admin untuk informasi lebih lanjut."
         });
       }
 
@@ -806,7 +807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
-      } catch {}
+      } catch { }
 
       res.json({
         qrCode: permanentQr,
@@ -844,7 +845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/checkin/status/:qrCode', async (req, res) => {
     try {
       const { qrCode } = req.params;
-      
+
       if (!qrCode) {
         return res.status(400).json({ success: false, message: 'QR code is required' });
       }
@@ -899,11 +900,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/checkin/verify', async (req, res) => {
     try {
       const { qrCode } = req.body;
-      
+
       if (!qrCode) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           success: false,
-          message: 'Kode QR tidak valid' 
+          message: 'Kode QR tidak valid'
         });
       }
       const now = new Date();
@@ -989,9 +990,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({ success: true, user: safeUserData, checkIn: { id: checkIn.id, checkInTime: checkIn.checkInTime } });
     } catch (error) {
       console.error("Error verifying check-in:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        message: "Terjadi kesalahan saat check-in" 
+        message: "Terjadi kesalahan saat check-in"
       });
     }
   });
@@ -1042,18 +1043,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      
+
       const userBookings = await storage.getUserClassBookings(userId);
       const booking = userBookings.find(b => b.id === id);
-      
+
       if (!booking) {
         return res.status(404).json({ message: 'Booking not found or unauthorized' });
       }
-      
+
       if (booking.status === 'cancelled') {
         return res.status(400).json({ message: 'Booking already cancelled' });
       }
-      
+
       await storage.cancelClassBooking(id);
       res.json({ message: 'Class booking cancelled successfully' });
     } catch (error) {
@@ -1079,19 +1080,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin routes
+  // Admin routes
   app.get('/api/admin/dashboard', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
-      if (user?.role !== 'admin') {
+
+      if (user?.role !== 'admin' && user?.role !== 'super_admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
+      // Determine target branch
+      // If Super Admin: use query param (or undefined for all)
+      // If Admin: force use homeBranch
+      const branchFilter = req.query.branch as string;
+      const targetBranch: string | undefined = user.role === 'super_admin'
+        ? (branchFilter === 'all' || !branchFilter ? undefined : branchFilter)
+        : (user.homeBranch || undefined);
+
       const [users, revenue, membershipStats] = await Promise.all([
-        storage.getUsersWithMemberships(),
-        storage.getRevenueStats(),
-        storage.getMembershipStats(),
+        storage.getUsersWithMemberships(undefined, undefined, undefined, targetBranch),
+        storage.getRevenueStats(targetBranch),
+        storage.getMembershipStats(targetBranch),
       ]);
 
       // Calculate active members today (simplified - users with recent check-ins)
@@ -1100,9 +1110,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const activeToday = 0; // This would need a more complex query
 
       res.json({
-        users,
+        users: users.data,
         stats: {
-          totalMembers: users.length,
+          totalMembers: users.total,
           activeToday,
           expiringSoon: membershipStats.expiringSoon,
           revenue,
@@ -1118,19 +1128,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const members = await storage.getUsersWithMemberships();
-      
+
       // Add last check-in and activity info to each member
       const membersWithActivity = await Promise.all(
-        members.map(async (member) => {
+        members.data.map(async (member) => {
           const checkIns = await storage.getUserCheckIns(member.id, 1);
           const lastCheckIn = checkIns[0];
-          
+
           let daysInactive = null;
           if (lastCheckIn?.checkInTime) {
             const now = new Date();
@@ -1138,7 +1148,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const diffTime = now.getTime() - lastCheckInDate.getTime();
             daysInactive = Math.floor(diffTime / (1000 * 60 * 60 * 24));
           }
-          
+
           return {
             ...member,
             lastCheckIn: lastCheckIn?.checkInTime || null,
@@ -1146,7 +1156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         })
       );
-      
+
       res.json(membersWithActivity);
     } catch (error) {
       console.error("Error fetching members:", error);
@@ -1158,13 +1168,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { password, ...memberData } = req.body;
-      
+
       const existingUsername = await storage.getUserByUsername(memberData.username);
       if (existingUsername) {
         return res.status(400).json({ message: "Username sudah digunakan" });
@@ -1177,16 +1187,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const hashedPassword = await bcrypt.hash(password || 'default123', 10);
 
+      // Auto-assign member's branch based on admin's branch
+      const memberBranch = user.homeBranch || 'Jakarta Barat'; // Default to Jakarta Barat if admin has no branch
+
       const newMember = await storage.createUser({
         ...memberData,
         password: hashedPassword,
         role: 'member',
+        homeBranch: memberBranch, // Set member's branch to admin's branch
       });
+
+      // Log admin activity
+      try {
+        await logActivity(
+          userId,
+          'ADMIN_CREATE_MEMBER',
+          {
+            username: newMember.username,
+            email: newMember.email,
+            firstName: newMember.firstName,
+            lastName: newMember.lastName,
+            branch: memberBranch
+          },
+          req,
+          newMember.id,
+          'user'
+        );
+      } catch (logError) {
+        console.error('[Admin Create Member] logActivity failed:', logError);
+      }
 
       res.json({ ...newMember, password: undefined });
     } catch (error: any) {
       console.error("Error creating member:", error);
       res.status(500).json({ message: error.message || "Failed to create member" });
+    }
+  });
+
+  app.delete('/api/admin/members/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== 'super_admin') {
+        return res.status(403).json({ message: 'Super Admin access required' });
+      }
+
+      const memberId = req.params.id;
+      const member = await storage.getUser(memberId);
+
+      if (!member) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      await storage.deleteUser(memberId);
+
+      // Log admin activity
+      try {
+        await logActivity(
+          userId,
+          'ADMIN_DELETE_MEMBER',
+          {
+            deletedUserId: memberId,
+            deletedUsername: member.username,
+            deletedEmail: member.email
+          },
+          req,
+          memberId,
+          'user'
+        );
+      } catch (logError) {
+        console.error('[Admin Delete Member] logActivity failed:', logError);
+      }
+
+      res.json({ message: "Member deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting member:", error);
+      res.status(500).json({ message: error.message || "Failed to delete member" });
     }
   });
 
@@ -1208,7 +1285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (memberId) {
         const target = await storage.getUser(memberId);
         if (!target) return res.status(404).json({ message: 'Member tidak ditemukan' });
-  targetPhone = normalizePhone((target as any).phone || undefined);
+        targetPhone = normalizePhone((target as any).phone || undefined);
       } else {
         targetPhone = normalizePhone(phone);
       }
@@ -1234,7 +1311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
-  const { memberId, email, subject, message, ctaText, ctaUrl } = req.body || {};
+      const { memberId, email, subject, message, ctaText, ctaUrl } = req.body || {};
       if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
         return res.status(400).json({ message: 'Subject tidak boleh kosong' });
       }
@@ -1255,7 +1332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Email tidak valid atau tidak tersedia' });
       }
 
-  const { client, fromEmail, replyTo } = getResendClientForAdmin();
+      const { client, fromEmail, replyTo } = getResendClientForAdmin();
 
       const html = (ctaText && ctaUrl)
         ? buildBrandedEmailHtmlWithCta(subject.trim(), textToSafeHtml(message), String(ctaText), String(ctaUrl))
@@ -1287,7 +1364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1326,7 +1403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1353,14 +1430,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { id } = req.params;
       const updatedMember = await storage.updateUser(id, { active: false });
-      res.json({ 
+      res.json({
         message: 'Member suspended successfully',
         member: { ...updatedMember, password: undefined }
       });
@@ -1374,14 +1451,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { id } = req.params;
       const updatedMember = await storage.updateUser(id, { active: true });
-      res.json({ 
+      res.json({
         message: 'Member activated successfully',
         member: { ...updatedMember, password: undefined }
       });
@@ -1395,7 +1472,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1405,7 +1482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const plan = await storage.getMembershipPlans();
       const selectedPlan = plan.find(p => p.id === planId);
-      
+
       if (!selectedPlan) {
         return res.status(404).json({ message: 'Plan not found' });
       }
@@ -1439,7 +1516,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1456,7 +1533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1474,14 +1551,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { id } = req.params;
-      const updateData = req.body;
-      
+      const updateData = insertMembershipPlanSchema.partial().parse(req.body);
+
       const plan = await storage.updateMembershipPlan(id, updateData);
       res.json(plan);
     } catch (error) {
@@ -1494,7 +1571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1512,7 +1589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1530,7 +1607,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1547,14 +1624,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { id } = req.params;
-      const updateData = req.body;
-      
+      const updateData = insertGymClassSchema.partial().parse(req.body);
+
       await storage.updateGymClass(id, updateData);
       res.json({ message: 'Class updated successfully' });
     } catch (error) {
@@ -1567,7 +1644,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1585,7 +1662,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1602,7 +1679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1622,7 +1699,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create notification when booking is confirmed or attended
       if (booking && (status === 'attended' || status === 'booked')) {
-        const notificationTitle = status === 'attended' 
+        const notificationTitle = status === 'attended'
           ? 'Class Booking Dikonfirmasi'
           : 'Class Booking Berhasil';
         const notificationMessage = status === 'attended'
@@ -1650,7 +1727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1669,7 +1746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -1684,12 +1761,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Try to find user by permanent QR code first
       let memberUser = await storage.getUserByPermanentQrCode(qrCode);
       let isOneTimeQr = false;
-      
+
       // If not found by permanent QR code, try to find by one-time QR code
       if (!memberUser) {
         console.log(`[Admin Check-in] Not a permanent QR, checking one-time QR...`);
         const oneTimeQr = await storage.validateOneTimeQrCode(qrCode);
-        
+
         if (oneTimeQr) {
           console.log(`[Admin Check-in] Found one-time QR with status: ${oneTimeQr.status}`);
           // Check if QR code is still valid
@@ -1700,14 +1777,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               message: 'QR code sudah pernah digunakan'
             });
           }
-          
+
           if (oneTimeQr.status === 'expired' || oneTimeQr.expiresAt < now) {
             return res.json({
               success: false,
               message: 'QR code sudah kadaluarsa. Silakan generate QR baru'
             });
           }
-          
+
           // Get user from one-time QR code
           memberUser = await storage.getUser(oneTimeQr.userId);
           isOneTimeQr = true;
@@ -1716,11 +1793,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`[Admin Check-in] One-time QR not found`);
         }
       }
-      
+
       if (!memberUser) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           success: false,
-          message: 'QR code tidak valid atau member tidak ditemukan' 
+          message: 'QR code tidak valid atau member tidak ditemukan'
         });
       }
 
@@ -1757,11 +1834,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const permanentQr = await storage.ensureUserPermanentQrCode(memberUser.id);
         checkInData = await storage.validateMemberQrAndCheckIn(permanentQr);
       }
-      
+
       if (!checkInData) {
-        return res.status(500).json({ 
+        return res.status(500).json({
           success: false,
-          message: 'Gagal membuat check-in' 
+          message: 'Gagal membuat check-in'
         });
       }
 
@@ -1784,9 +1861,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Error validating check-in:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        message: "Failed to validate check-in" 
+        message: "Failed to validate check-in"
       });
     }
   });
@@ -1835,7 +1912,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const recent = await storage.getUserCheckIns(memberUser.id, 1);
         lastCheckIn = recent && recent.length > 0 ? recent[0] : null;
-      } catch {}
+      } catch { }
 
       return res.json({
         success: true,
@@ -1941,13 +2018,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
-      if (user?.role !== 'admin') {
+
+      if (user?.role !== 'admin' && user?.role !== 'super_admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
-      const checkIns = await storage.getRecentCheckIns(limit);
+
+      // Determine target branch
+      const branchFilter = req.query.branch as string;
+      const targetBranch: string | undefined = user.role === 'super_admin'
+        ? (branchFilter === 'all' || !branchFilter ? undefined : branchFilter)
+        : (user.homeBranch || undefined);
+
+      const checkIns = await storage.getRecentCheckIns(limit, 0, targetBranch);
       res.json(checkIns);
     } catch (error) {
       console.error("Error fetching check-ins:", error);
@@ -1959,14 +2043,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const checkedOutCount = await storage.autoCheckoutExpiredSessions();
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         checkedOutCount,
         message: `Successfully auto-checked out ${checkedOutCount} member(s)`
       });
@@ -2110,7 +2194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2127,7 +2211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2162,11 +2246,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const trainer = await storage.getTrainerById(id);
-      
+
       if (!trainer) {
         return res.status(404).json({ message: 'Trainer not found' });
       }
-      
+
       res.json(trainer);
     } catch (error) {
       console.error("Error fetching trainer:", error);
@@ -2179,7 +2263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2196,7 +2280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2229,13 +2313,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { id } = req.params;
-      
+
       const updateTrainerSchema = z.object({
         name: z.string().min(1).optional(),
         bio: z.string().optional(),
@@ -2264,7 +2348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2328,18 +2412,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      
+
       const userBookings = await storage.getUserPtBookings(userId);
       const booking = userBookings.find(b => b.id === id);
-      
+
       if (!booking) {
         return res.status(404).json({ message: 'Booking not found or unauthorized' });
       }
-      
+
       if (booking.status === 'cancelled') {
         return res.status(400).json({ message: 'Booking already cancelled' });
       }
-      
+
       await storage.cancelPtBooking(id);
       res.json({ message: 'PT booking cancelled successfully' });
     } catch (error) {
@@ -2353,7 +2437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2370,7 +2454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2418,7 +2502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/pt-session-packages', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      
+
       const packageSchema = z.object({
         trainerId: z.string().min(1, "Trainer ID is required"),
         totalSessions: z.number().min(1, "Total sessions must be at least 1"),
@@ -2464,11 +2548,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const pkg = await storage.getPtSessionPackageById(id);
-      
+
       if (!pkg) {
         return res.status(404).json({ message: 'Package not found' });
       }
-      
+
       res.json(pkg);
     } catch (error) {
       console.error("Error fetching PT session package:", error);
@@ -2515,7 +2599,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionNumber,
         status: 'scheduled',
         notes: validatedData.notes,
-        adminConfirmed: false,
       });
 
       res.json(attendance);
@@ -2528,14 +2611,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/pt-session-attendance', isAuthenticated, async (req: any, res) => {
+  // Feedback Routes
+  app.post('/api/feedbacks', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const sessions = await storage.getUserPtAttendanceSessions(userId);
-      res.json(sessions);
+      const validatedData = insertFeedbackSchema.parse({ ...req.body, userId });
+
+      const feedback = await storage.createFeedback(validatedData);
+      res.json(feedback);
+    } catch (error: any) {
+      console.error("Error creating feedback:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid feedback data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create feedback" });
+    }
+  });
+
+  app.get('/api/feedbacks', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+
+      if (user?.role === 'admin' || user?.role === 'super_admin') {
+        const feedbacks = await storage.getAllFeedbacks();
+        res.json(feedbacks);
+      } else {
+        const feedbacks = await storage.getUserFeedbacks(userId);
+        res.json(feedbacks);
+      }
     } catch (error) {
-      console.error("Error fetching PT session attendance:", error);
-      res.status(500).json({ message: "Failed to fetch PT session attendance" });
+      console.error("Error fetching feedbacks:", error);
+      res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+  });
+
+  app.get('/api/feedbacks/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const feedback = await storage.getFeedbackById(id);
+
+      if (!feedback) {
+        return res.status(404).json({ message: "Feedback not found" });
+      }
+
+      // Check authorization
+      if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && feedback.userId !== userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      res.json(feedback);
+    } catch (error) {
+      console.error("Error fetching feedback:", error);
+      res.status(500).json({ message: "Failed to fetch feedback" });
+    }
+  });
+
+  app.patch('/api/feedbacks/:id/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== 'admin' && user?.role !== 'super_admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { id } = req.params;
+      const { status, isResolved } = req.body;
+
+      await storage.updateFeedbackStatus(id, status, isResolved);
+      res.json({ message: "Feedback status updated" });
+    } catch (error) {
+      console.error("Error updating feedback status:", error);
+      res.status(500).json({ message: "Failed to update feedback status" });
+    }
+  });
+
+  app.get('/api/feedbacks/:id/replies', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const feedback = await storage.getFeedbackById(id);
+
+      if (!feedback) {
+        return res.status(404).json({ message: "Feedback not found" });
+      }
+
+      // Check authorization
+      if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && feedback.userId !== userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const replies = await storage.getFeedbackReplies(id);
+      res.json(replies);
+    } catch (error) {
+      console.error("Error fetching feedback replies:", error);
+      res.status(500).json({ message: "Failed to fetch feedback replies" });
+    }
+  });
+
+  app.post('/api/feedbacks/:id/replies', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const feedback = await storage.getFeedbackById(id);
+
+      if (!feedback) {
+        return res.status(404).json({ message: "Feedback not found" });
+      }
+
+      // Check authorization
+      if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && feedback.userId !== userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const validatedData = insertFeedbackReplySchema.parse({
+        ...req.body,
+        feedbackId: id,
+        senderId: userId,
+      });
+
+      const reply = await storage.createFeedbackReply(validatedData);
+      res.json(reply);
+    } catch (error: any) {
+      console.error("Error creating feedback reply:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid reply data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create feedback reply" });
     }
   });
 
@@ -2543,11 +2747,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const session = await storage.getPtSessionAttendanceById(id);
-      
+
       if (!session) {
         return res.status(404).json({ message: 'Session not found' });
       }
-      
+
       res.json(session);
     } catch (error) {
       console.error("Error fetching PT session attendance:", error);
@@ -2559,9 +2763,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      
+
       const session = await storage.getPtSessionAttendanceById(id);
-      
+
       if (!session) {
         return res.status(404).json({ message: 'Session not found' });
       }
@@ -2590,7 +2794,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/admin/pt-session-packages', isAuthenticated, async (req: any, res) => {
     try {
       const user = await storage.getUser(req.user.id);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2598,7 +2802,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all users' packages
       const allUsers = await storage.getAllUsers();
       const allPackages = [];
-      
+
       for (const u of allUsers) {
         const userPackages = await storage.getUserPtSessionPackages(u.id);
         allPackages.push(...userPackages.map(pkg => ({
@@ -2617,7 +2821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/admin/pt-session-attendance', isAuthenticated, async (req: any, res) => {
     try {
       const user = await storage.getUser(req.user.id);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
@@ -2625,7 +2829,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all users' sessions
       const allUsers = await storage.getAllUsers();
       const allSessions = [];
-      
+
       for (const u of allUsers) {
         const userSessions = await storage.getUserPtAttendanceSessions(u.id);
         allSessions.push(...userSessions.map(session => ({
@@ -2645,14 +2849,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const adminId = req.user.id;
       const user = await storage.getUser(adminId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { id } = req.params;
       const session = await storage.getPtSessionAttendanceById(id);
-      
+
       if (!session) {
         return res.status(404).json({ message: 'Session not found' });
       }
@@ -2669,7 +2873,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (pkg) {
         const newUsedSessions = (pkg.usedSessions || 0) + 1;
         const newRemainingSessions = pkg.totalSessions - newUsedSessions;
-        
+
         await storage.updatePtSessionPackage(session.packageId, {
           usedSessions: newUsedSessions,
           remainingSessions: newRemainingSessions,
@@ -2699,16 +2903,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const { daysInactive = 7 } = req.body;
-      
+
       const reminderCount = await storage.sendInactivityReminders(daysInactive);
-      
-      res.json({ 
+
+      res.json({
         message: `Berhasil mengirim ${reminderCount} reminder ke member yang tidak aktif`,
         count: reminderCount,
         daysInactive
@@ -2724,16 +2928,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       if (user?.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required' });
       }
 
       const daysInactive = parseInt(req.query.days as string) || 7;
-      
+
       const inactiveMembers = await storage.getInactiveMembers(daysInactive);
-      
-      res.json({ 
+
+      res.json({
         members: inactiveMembers,
         count: inactiveMembers.length,
         daysInactive
@@ -2749,20 +2953,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
-      
+
       const expiring = await storage.getExpiringMemberships(20);
-      
+
       // For members, only return their own expiring membership
       if (user?.role !== 'admin') {
         const userExpiring = expiring.filter(membership => membership.userId === userId);
         return res.json(userExpiring);
       }
-      
+
       // For admins, return all expiring memberships
       res.json(expiring);
     } catch (error) {
       console.error("Error fetching expiring memberships:", error);
       res.status(500).json({ message: "Failed to fetch expiring memberships" });
+    }
+  });
+
+  // Super Admin: Get all admins
+  app.get('/api/super-admin/admins', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_admin') {
+        return res.status(403).json({ message: 'Super Admin access required' });
+      }
+      const admins = await storage.getAdmins();
+      res.json(admins);
+    } catch (error) {
+      console.error("Error fetching admins:", error);
+      res.status(500).json({ message: "Failed to fetch admins" });
+    }
+  });
+
+  // Super Admin: Create new admin
+  app.post('/api/super-admin/create-admin', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_admin') {
+        return res.status(403).json({ message: 'Super Admin access required' });
+      }
+
+      const validatedData = createAdminSchema.parse(req.body);
+      const existingUser = await storage.getUserByUsername(validatedData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const hashedPassword = await bcrypt.hash(validatedData.password, 10);
+      const newAdmin = await storage.createUser({
+        ...validatedData,
+        password: hashedPassword,
+        role: 'admin',
+        active: true,
+        emailVerified: true,
+      });
+
+      await logActivity(userId, 'ADMIN_CREATE_ADMIN', {
+        newAdminId: newAdmin.id,
+        username: newAdmin.username
+      }, req, newAdmin.id, 'user');
+
+      res.json(newAdmin);
+    } catch (error: any) {
+      console.error("Error creating admin:", error);
+      res.status(500).json({ message: error.message || "Failed to create admin" });
+    }
+  });
+
+  // Super Admin: Delete admin
+  app.delete('/api/super-admin/admins/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_admin') {
+        return res.status(403).json({ message: 'Super Admin access required' });
+      }
+
+      const adminId = req.params.id;
+      if (adminId === userId) {
+        return res.status(400).json({ message: "Cannot delete yourself" });
+      }
+
+      await storage.deleteUser(adminId);
+
+      await logActivity(userId, 'ADMIN_DELETE_ADMIN', {
+        deletedAdminId: adminId
+      }, req, adminId, 'user');
+
+      res.json({ message: "Admin deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting admin:", error);
+      res.status(500).json({ message: error.message || "Failed to delete admin" });
+    }
+  });
+
+  // Super Admin: Update admin
+  app.patch('/api/super-admin/admins/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_admin') {
+        return res.status(403).json({ message: 'Super Admin access required' });
+      }
+
+      const adminId = req.params.id;
+      const validatedData = updateAdminSchema.parse(req.body);
+
+      const existingUser = await storage.getUser(adminId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+
+      // If username changed, check uniqueness
+      if (validatedData.username && validatedData.username !== existingUser.username) {
+        const checkUser = await storage.getUserByUsername(validatedData.username);
+        if (checkUser) {
+          return res.status(400).json({ message: "Username already exists" });
+        }
+      }
+
+      const updateData: any = { ...validatedData };
+      if (validatedData.password) {
+        updateData.password = await bcrypt.hash(validatedData.password, 10);
+      } else {
+        delete updateData.password;
+      }
+
+      const updatedAdmin = await storage.updateUser(adminId, updateData);
+
+      await logActivity(userId, 'ADMIN_UPDATE_ADMIN', {
+        updatedAdminId: adminId,
+        changes: validatedData
+      }, req, adminId, 'user');
+
+      res.json(updatedAdmin);
+    } catch (error: any) {
+      console.error("Error updating admin:", error);
+      res.status(500).json({ message: error.message || "Failed to update admin" });
     }
   });
 
